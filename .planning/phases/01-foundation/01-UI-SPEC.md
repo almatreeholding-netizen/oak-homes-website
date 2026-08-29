@@ -32,7 +32,8 @@ Official logo files provided by the owner (2026-08-29): dual-leaf circular mark 
 | Wordmark | Ships as an exported image asset only — never re-typeset in Lora/Inter. The logo's geometric sans is not a site UI font. |
 | Variant usage | Ink mark on cream → site header (default). Color mark in yellow circle → social avatars, OG images, favicon. White/cream mark on ink → footer and dark surfaces. |
 | Placeholder frame | The zero-photo gallery/card placeholder uses the dual-leaf mark (reduced opacity ink on cream), replacing the earlier generic "leaf mark" description. |
-| Asset task | Executor must export the mark as SVG and the full lockup as PNG from the source PDFs and commit them (e.g. `public/brand/`) — the PDFs are not web-ready. Logo yellow is assumed to equal accent `#F6C84C` per the design spec; verify against the exported asset and re-sample the token from the source file if it differs. |
+| Asset task | Source files live at `<repo-root>/Logo/` (PDFs + PNGs + 196×196 `Android.png`, provided 2026-08-29). Executor must produce web-ready assets committed under e.g. `public/brand/`: mark-only SVG (trace or export), optimized lockup PNG/WebP, favicon set from `Android.png`. The PDFs wrap raster images — the PNGs are the usable source. |
+| Verified colors | Sampled from the source PNGs: logo yellow `#FFD053` — **adopted as the accent token** (owner decision 2026-08-29, superseding the design-spec estimate `#F6C84C`); logo ink `#201D1D` — site keeps `#1A1A1A` for all UI ink (difference imperceptible; one token, not two). |
 
 **shadcn gate — skipped, not blocked.** `components.json` is absent and the repo is greenfield (no `src/`, no `package.json` yet). The shadcn gate triggers for React/Next.js/Vite component-framework stacks; this project is an Astro **static** site whose locked stack rationale (`.claude/CLAUDE.md`) explicitly values "zero-JS-by-default output." Pulling in shadcn's React/Radix component layer for a content-driven marketing site (property cards, nav, badges, a gallery lightbox) would work against that architecture for no material benefit. Tailwind + hand-built Astro components is the pragmatic default; documented here rather than asked, per gate note "If N: proceed without preset automation."
 
@@ -71,7 +72,7 @@ Usage notes:
 - Label (14px/600) covers: nav items, status badges, card meta (address line, beds/baths/sqft), button text, footer legal line.
 - Heading (24px/600) covers: section headings ("Available Homes", "How It Works" step headers, Learn post titles in the index).
 - Display (36px/600, fixed across breakpoints) covers: page H1s only — homepage hero headline, property page address, How It Works / About / Learn page titles.
-- Price figures (down payment / monthly payment on cards and property pages) use the Heading size at accent color (see Color below) to read as the second-most prominent number on the page after the H1.
+- Price figures (down payment / monthly payment on cards and property pages) use the Heading size at price gold `#A87E24` (see Color below) to read as the second-most prominent number on the page after the H1.
 
 ---
 
@@ -81,7 +82,7 @@ Usage notes:
 |-----------------|----------------------|------------------------|
 | Homepage | Display headline (hero) paired with the "Browse Homes" accent CTA — the two read as one anchor block | "Available Homes" section heading + first property card in the grid |
 | Homes grid (`/homes`) | The Available-status property cards (accent badge draws the eye first, per D-05 sort order) | Section heading "Available Homes"; Pending/Sold cards recede visually behind the duller badge colors |
-| Property page | Display-size address (H1) + Available/Pending/Sold status badge, positioned together at the top of the page | Price figures (down payment / monthly payment, Heading size + accent color) and the Inquire CTA |
+| Property page | Display-size address (H1) + Available/Pending/Sold status badge, positioned together at the top of the page | Price figures (down payment / monthly payment, Heading size + price gold) and the Inquire CTA |
 | How It Works / About / Learn index | Display-size page title | First content block (step 1, first Learn post card) |
 | Learn post | Post title (Heading size) + cover image when present | Body copy in the prose container |
 | Contact / Schedule a Showing | Phone CTA ("Call (217) 269-0003") or the lead form, whichever is primary for that page | Page title (Display) |
@@ -96,10 +97,11 @@ Rule of thumb: exactly one accent-colored element per screen should compete for 
 |------|-------|-------|
 | Dominant (60%) | `#FFFDF7` (warm cream) | Page background, base surface everywhere |
 | Secondary (30%) | `#FBF4E4` (deeper warm cream) | Cards, header, footer, alternating section backgrounds |
-| Accent (10%) | `#F6C84C` (brand yellow), hover/pressed `#E4AE2B` | Primary CTA buttons (Inquire, Browse Homes, Call), Available status badge fill, active nav underline/indicator, price-figure emphasis text |
+| Accent (10%) | `#FFD053` (brand yellow — sampled from the provided logo files, replacing the design-spec estimate `#F6C84C`), hover/pressed `#EDB52F` | Primary CTA buttons (Inquire, Browse Homes, Call), Available status badge fill, active nav underline/indicator — **fills only, never text on cream** |
+| Price gold | `#A87E24` (darkened accent-family text tone) | Price-figure emphasis text (down payment / monthly payment) on cards and property pages. Exists because every bright brand yellow fails WCAG AA as text on the cream surfaces (~2:1); `#A87E24` measures ≥3.3:1 on both creams, passing AA for the 24px price figures (DESIGN-04) |
 | Destructive | `#B3261E` (standard red) | Reserved — not used in Phase 1 (no live forms/admin actions yet); pre-declared so Phase 2/3 form-validation and status-change confirmations inherit one consistent value instead of inventing a new red later |
 
-Accent reserved for: **primary CTA buttons, the Available status badge, the active/current nav indicator, and price-figure text on property cards and pages.** Nothing else — body links use ink (`#1A1A1A`) with an underline, not accent yellow, to keep the 10% budget from bleeding into inline text.
+Accent fills reserved for: **primary CTA buttons, the Available status badge, and the active/current nav indicator.** Price figures use price gold `#A87E24`, not the fill yellow. Nothing else — body links use ink (`#1A1A1A`) with an underline, not accent yellow, to keep the 10% budget from bleeding into inline text.
 
 Additional informational (non-accent) status colors, needed for DESIGN-01's badge requirement but intentionally kept out of the accent budget:
 
@@ -158,7 +160,7 @@ Empty-state and error-state COPY lives in `## Copywriting Contract` above — ro
 | populated | E2 | ✅ resolved (explicit) | Card anatomy: photo, address (Label), beds/baths/sqft meta, price figures (Heading size, accent), status badge — per Typography/Color sections. |
 | populated | E3 | ✅ resolved (explicit) | Gallery with lightbox; prev/next arrows at 44px touch targets (Spacing exception). |
 | populated | E4 | ✅ resolved (explicit) | 7 items horizontal at ≥768px with accent active-indicator; hamburger drawer below 768px. |
-| populated | E5 | ✅ resolved (explicit) | Three variants pinned in the Color section: Available `#F6C84C`, Pending `#D9B36C`, Sold `#1A1A1A`/cream text. |
+| populated | E5 | ✅ resolved (explicit) | Three variants pinned in the Color section: Available `#FFD053`, Pending `#D9B36C`, Sold `#1A1A1A`/cream text. |
 | populated | E7 | ✅ resolved (explicit) | Post cards/list reads correctly at n=1 and scales to many (D-15). |
 | populated | E8 | ✅ resolved (explicit) | Title + date + optional cover image + prose body in a max-width container. |
 | partial | E1, E2 | ✅ resolved (explicit) | Missing beds/baths/sqft renders "Call for details" per field (D-10) — a card never looks visually incomplete. |
