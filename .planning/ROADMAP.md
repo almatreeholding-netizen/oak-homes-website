@@ -30,16 +30,26 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Every page carries the mockup's branding (yellow #F6C84C / ink #1A1A1A / warm cream, Lora + Inter, leaf logo, "From Rent to Roots"), the phone number (217) 269-0003, the Equal Housing Opportunity footer with the refined legal wording, and a marked integrations slot — all inherited from one shared layout, so a new page template structurally cannot ship without them.
   4. How It Works (with the FAQ folded in), About, Learn (index plus at least one post), and Schedule a Showing are reachable from the navigation, read correctly at phone width, and pass WCAG 2.1 AA basics — alt text, contrast, keyboard-navigable forms and menus.
   5. Adding or changing a home requires editing only its markdown file and photos — no template edits — and the build fails loudly when a required field is missing or malformed.
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Own the repo before anything ships: preserve the mockups and logo sources, flip the repo to Private, connect this computer and push
+- [ ] 01-02-PLAN.md — Walking Skeleton (tracer): scaffold Astro + Tailwind v4 tokens + the full content schema + shared layout, rendering one real home end to end
+- [ ] 01-03-PLAN.md — Both real homes: extract and resize the eleven photos, build the Browse Homes grid and the full property page with gallery and lightbox
+- [ ] 01-04-PLAN.md — Every content page reachable: homepage, How It Works with the FAQ folded in, About, Schedule, Contact shell, and the Learn section
+- [ ] 01-05-PLAN.md — Accessible, mobile-first, and pushed: WCAG 2.1 AA sweep, whole-phase verification, README, and the final push
+
 **UI hint**: yes
 
-**User-collaboration checkpoint**: INFRA-01 (creating the Oak Homes GitHub account) is a browser walkthrough done live with the owner — it cannot be completed autonomously. Plan it as a guided, sit-together step, and gate the repo work behind it.
+**User-collaboration checkpoint** *(reduced during planning — see D-11/D-13)*: the Oak Homes GitHub account `almatreeholding-netizen` and the repo `oak-homes-website` **already exist**, so no account-creation walkthrough is needed. What remains owner-facing is a single browser action: flipping the repo from Public to Private (GitHub Settings → Danger Zone), which has no CLI path on this machine. It is planned as a blocking `checkpoint:human-action` in 01-01, and the push is gated behind it by a precondition. Local scaffold work does not block on it.
 
 **Carried-forward notes**:
 - Land-contract and Equal Housing copy lives in code, never in the CMS (DESIGN-03) — the assistant must not be able to edit it into a compliance problem.
 - The content schema finalized here must already include the fields Phase 3 reads (map coordinates, optional video URL, OpenGraph fields). Adding them later would desynchronize the CMS config written in Phase 2 — the exact drift pitfall research flagged.
 - Both migrated homes' photos are pre-resized to ~2000px before their first commit, setting the precedent the Phase 2 cheat-sheet documents. Git history keeps oversized images forever.
-- Confirm the Brown Street house number (2734 vs 2437) with the owner before it becomes a permanent slug.
+- ~~Confirm the Brown Street house number (2734 vs 2437) with the owner before it becomes a permanent slug.~~ **Resolved: 2734** (D-14), independently corroborated by the mockup's own `address` field (`2734 Brown Street`). Permanent slug: `2734-brown-st`.
+- Accent yellow is `#FFD053`, sampled from the owner's real logo files (UI-SPEC, 2026-08-29). This supersedes the `#F6C84C` estimate that still appears in the DESIGN-01 prose above and in REQUIREMENTS.md. Price figures use `#A87E24`, which passes AA on both cream surfaces.
+- Deployment is **not** in this phase. Phase 1's definition of done is a clean local `npm run build` plus a push to the private repo; INFRA-03 (Netlify auto-deploy) is Phase 2.
 
 ### Phase 2: Publishing
 **Goal**: The assistant can add a home through a form and watch it appear on the live site about two minutes later, without touching code or asking anyone
@@ -103,7 +113,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 0/5 | Planned | - |
 | 2. Publishing | 0/TBD | Not started | - |
 | 3. Integrations | 0/TBD | Not started | - |
 | 4. Launch | 0/TBD | Not started | - |
