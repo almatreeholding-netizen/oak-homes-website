@@ -52,15 +52,30 @@ Exceptions: **44px minimum touch target** for mobile tap elements — the phone 
 | Body | 16px (Inter) | 400 | 1.5 |
 | Label | 14px (Inter) | 600 | 1.4 |
 | Heading | 24px (Lora) | 600 | 1.2 |
-| Display | 36px mobile / 48px desktop ≥768px (Lora) | 600 | 1.15 |
+| Display | 36px, all breakpoints (Lora) | 600 | 1.15 |
 
-Exactly 2 weights used across both families: **400 (regular)** for body copy and labels-when-unemphasized; **600 (semibold)** for headings, display, nav-active state, and price emphasis. Do not introduce 700/bold or 300/light cuts.
+Exactly 4 font sizes total (14, 16, 24, 36) and exactly 2 weights used across both families: **400 (regular)** for body copy and labels-when-unemphasized; **600 (semibold)** for headings, display, nav-active state, and price emphasis. Do not introduce 700/bold or 300/light cuts, and do not introduce a fifth size (e.g. a larger desktop-only Display variant) — 36px is the single Display value at every breakpoint, including desktop hero sections. If a desktop hero needs more visual weight than 36px provides, achieve it through spacing (generous `3xl`/64px vertical padding) and color contrast, not a new type size.
 
 Usage notes:
 - Label (14px/600) covers: nav items, status badges, card meta (address line, beds/baths/sqft), button text, footer legal line.
 - Heading (24px/600) covers: section headings ("Available Homes", "How It Works" step headers, Learn post titles in the index).
-- Display (36/48px/600) covers: page H1s only — homepage hero headline, property page address, How It Works / About / Learn page titles.
+- Display (36px/600, fixed across breakpoints) covers: page H1s only — homepage hero headline, property page address, How It Works / About / Learn page titles.
 - Price figures (down payment / monthly payment on cards and property pages) use the Heading size at accent color (see Color below) to read as the second-most prominent number on the page after the H1.
+
+---
+
+## Visual Hierarchy / Focal Points
+
+| Page / Section | Primary Focal Point | Secondary Focal Point |
+|-----------------|----------------------|------------------------|
+| Homepage | Display headline (hero) paired with the "Browse Homes" accent CTA — the two read as one anchor block | "Available Homes" section heading + first property card in the grid |
+| Homes grid (`/homes`) | The Available-status property cards (accent badge draws the eye first, per D-05 sort order) | Section heading "Available Homes"; Pending/Sold cards recede visually behind the duller badge colors |
+| Property page | Display-size address (H1) + Available/Pending/Sold status badge, positioned together at the top of the page | Price figures (down payment / monthly payment, Heading size + accent color) and the Inquire CTA |
+| How It Works / About / Learn index | Display-size page title | First content block (step 1, first Learn post card) |
+| Learn post | Post title (Heading size) + cover image when present | Body copy in the prose container |
+| Contact / Schedule a Showing | Phone CTA ("Call (217) 269-0003") or the lead form, whichever is primary for that page | Page title (Display) |
+
+Rule of thumb: exactly one accent-colored element per screen should compete for primary attention (the CTA or the status badge — never both at equal visual weight in the same viewport). Display typography establishes page identity; accent color establishes the action or status the visitor should notice next.
 
 ---
 
