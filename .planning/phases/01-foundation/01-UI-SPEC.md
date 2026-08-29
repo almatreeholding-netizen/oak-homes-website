@@ -23,6 +23,17 @@ created: 2026-08-28
 | Icon library | Lucide, inlined as static SVG at build time (`lucide-static` or hand-copied paths) — zero client-side icon JS, matching the zero-JS-by-default architecture |
 | Font | Lora (headings/display) + Inter (body/labels), self-hosted via `@fontsource/lora` + `@fontsource/inter` (avoids an external Google Fonts request, supports the mobile-performance/SEO goal in DESIGN-05) |
 
+### Brand Mark / Logo
+
+Official logo files provided by the owner (2026-08-29): dual-leaf circular mark (two leaves in 180° rotational symmetry forming a circle) plus "Oak Homes / FROM RENT TO ROOTS" wordmark in a geometric sans. Source files are PDFs in four variants: color no-background, color with yellow-circle background, white no-background, black no-background.
+
+| Rule | Contract |
+|------|----------|
+| Wordmark | Ships as an exported image asset only — never re-typeset in Lora/Inter. The logo's geometric sans is not a site UI font. |
+| Variant usage | Ink mark on cream → site header (default). Color mark in yellow circle → social avatars, OG images, favicon. White/cream mark on ink → footer and dark surfaces. |
+| Placeholder frame | The zero-photo gallery/card placeholder uses the dual-leaf mark (reduced opacity ink on cream), replacing the earlier generic "leaf mark" description. |
+| Asset task | Executor must export the mark as SVG and the full lockup as PNG from the source PDFs and commit them (e.g. `public/brand/`) — the PDFs are not web-ready. Logo yellow is assumed to equal accent `#F6C84C` per the design spec; verify against the exported asset and re-sample the token from the source file if it differs. |
+
 **shadcn gate — skipped, not blocked.** `components.json` is absent and the repo is greenfield (no `src/`, no `package.json` yet). The shadcn gate triggers for React/Next.js/Vite component-framework stacks; this project is an Astro **static** site whose locked stack rationale (`.claude/CLAUDE.md`) explicitly values "zero-JS-by-default output." Pulling in shadcn's React/Radix component layer for a content-driven marketing site (property cards, nav, badges, a gallery lightbox) would work against that architecture for no material benefit. Tailwind + hand-built Astro components is the pragmatic default; documented here rather than asked, per gate note "If N: proceed without preset automation."
 
 ---
