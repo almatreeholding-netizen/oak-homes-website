@@ -83,4 +83,45 @@ Source: approved design spec (`docs/specs/2026-08-28-oak-homes-website-design.md
 
 ## Traceability
 
-(Filled by roadmap: each v1 requirement maps to exactly one phase.)
+Each v1 requirement maps to exactly one phase. Coverage: **36/36** — no orphans, no duplicates.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| BROWSE-01 | Phase 1 — Foundation | Pending |
+| BROWSE-02 | Phase 1 — Foundation | Pending |
+| BROWSE-03 | Phase 1 — Foundation | Pending |
+| PROP-01 | Phase 1 — Foundation | Pending |
+| PROP-02 | Phase 1 — Foundation | Pending |
+| PROP-03 | Phase 3 — Integrations | Pending |
+| PROP-04 | Phase 3 — Integrations | Pending |
+| PROP-05 | Phase 3 — Integrations | Pending |
+| EDU-01 | Phase 1 — Foundation | Pending |
+| EDU-02 | Phase 1 — Foundation | Pending |
+| EDU-03 | Phase 1 — Foundation | Pending |
+| EDU-04 | Phase 1 — Foundation | Pending |
+| EDU-05 | Phase 1 — Foundation | Pending |
+| LEAD-01 | Phase 3 — Integrations | Pending |
+| LEAD-02 | Phase 3 — Integrations | Pending |
+| LEAD-03 | Phase 1 — Foundation | Pending |
+| ADMIN-01 | Phase 2 — Publishing | Pending |
+| ADMIN-02 | Phase 2 — Publishing | Pending |
+| ADMIN-03 | Phase 2 — Publishing | Pending |
+| ADMIN-04 | Phase 2 — Publishing | Pending |
+| ADMIN-05 | Phase 2 — Publishing | Pending |
+| ADMIN-06 | Phase 2 — Publishing | Pending |
+| DESIGN-01 | Phase 1 — Foundation | Pending |
+| DESIGN-02 | Phase 1 — Foundation | Pending |
+| DESIGN-03 | Phase 1 — Foundation | Pending |
+| DESIGN-04 | Phase 1 — Foundation | Pending |
+| DESIGN-05 | Phase 1 — Foundation | Pending |
+| DESIGN-06 | Phase 1 — Foundation | Pending |
+| INFRA-01 | Phase 1 — Foundation | Pending |
+| INFRA-02 | Phase 1 — Foundation | Pending |
+| INFRA-03 | Phase 2 — Publishing | Pending |
+| INFRA-04 | Phase 1 — Foundation | Pending |
+| LAUNCH-01 | Phase 4 — Launch | Pending |
+| LAUNCH-02 | Phase 4 — Launch | Pending |
+| LAUNCH-03 | Phase 4 — Launch | Pending |
+| LAUNCH-04 | Phase 4 — Launch | Pending |
+
+**Coverage by phase:** Phase 1 = 20, Phase 2 = 7, Phase 3 = 5, Phase 4 = 4.
