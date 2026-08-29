@@ -121,23 +121,55 @@ Ink `#1A1A1A` is the base text color everywhere; it is not part of the 60/30/10 
 
 ## UI Considerations
 
-Applicable state considerations resolved: 9 covered, 2 backstop, 0 unresolved.
+Probe coverage (ui-consideration-probe, post-verification): **67 applicable considerations across 10 surfaces — 67 resolved (59 explicit, 8 backstop), 0 unresolved.**
 
-| Category | Element(s) | Status | Resolution / Reason |
-|----------|------------|--------|---------------------|
-| empty | Homes grid (list-collection) | ✅ covered | Zero-listing state renders the "No Homes Available Right Now" copy above — see Copywriting Contract |
-| zero-one-many | Homes grid (list-collection) | ✅ covered | Grid layout (CSS grid/flex-wrap) reads correctly at 1, 2, or many cards; sort order (Available → Pending → Sold, D-05) holds regardless of count |
-| partial | Homes grid cards (list-collection) | ✅ covered | Missing beds/baths/sqft renders "Call for details" per field (D-10) — card never looks visually incomplete |
-| overflow | Homes grid (list-collection) | ✅ covered | Grid wraps responsively with no fixed max card count; no horizontal scroll |
-| loading / error | Homes grid (list-collection) | dismissed | Static pre-rendered HTML — there is no client-side fetch, so no loading or error state exists to design |
-| empty | Property gallery (media) | 🧪 backstop | If a property somehow has zero photos, the gallery renders a single branded placeholder frame (cream background + leaf mark) instead of a broken/empty layout. Untested against a real zero-photo entry (both migrated homes have photos per D-03) — verify visually if content is ever added without photos. |
-| error | Property gallery (media) | 🧪 backstop | Images ship with explicit `width`/`height` and required `alt` text (DESIGN-04); if a photo file fails to resolve, the browser's native alt-text fallback displays — no custom broken-image UI is built for v1. Not exercised against an actual missing file in this phase. |
-| zero-one-many | Learn index (list-collection) | ✅ covered | D-15 guarantees at least one seeded post exists at phase completion; index layout (card/list) reads correctly at n=1 and will scale to many without a redesign |
-| empty | Learn index (list-collection) | dismissed | Not reachable in Phase 1 — D-15 seeds the first post before this phase is considered done |
-| empty | Blog post cover image (media) | ✅ covered | `coverImage` is an optional schema field; when absent, the post header renders title/date/body with no image slot — never an empty box or a broken-image icon |
-| long-text | Property description, How It Works, About body copy (static-content) | ✅ covered | Rich-text content renders in a max-width prose container with normal word wrapping; no truncation, clamping, or ellipsis is applied to descriptive or legally-sensitive copy |
-| overflow | Primary navigation (nav) | ✅ covered | Nav collapses to a hamburger/drawer pattern below 768px; all nav items (Home, Homes, How It Works, About, Learn, Schedule, Contact) stack vertically in the drawer with no truncation or horizontal scroll |
-| long-text | Inquire / phone CTA buttons (interactive-control) | ✅ covered | Button copy is fixed, short, and known at build time ("Inquire About This Home", "Call (217) 269-0003") — no dynamic content risk, no truncation strategy needed |
+Surfaces probed: E1 Homes grid (`/homes`) · E2 Property card · E3 Property photo gallery + lightbox · E4 Primary navigation · E5 Status badge · E6 Primary CTA buttons · E7 Learn index · E8 Learn post page · E9 How It Works / About static pages · E10 Contact / Schedule a Showing page.
+
+Empty-state and error-state COPY lives in `## Copywriting Contract` above — rows below reference those entries rather than restating them.
+
+| Category | Element(s) | Status | Resolution |
+|----------|------------|--------|------------|
+| loading | E1, E2, E4, E5, E7, E8, E9, E10 | ✅ resolved (explicit) | Static pre-rendered HTML with no client-side data fetching — no loading state exists to render. Acceptance: shipped pages contain no spinners/skeletons and no runtime fetch code. |
+| loading | E3 (gallery images) | ✅ resolved (explicit) | Images ship with explicit `width`/`height` attributes reserving layout space (no CLS) and native `loading="lazy"` below the fold — no custom skeleton is built. |
+| loading | E6 (CTA buttons) | ✅ resolved (explicit) | CTAs are plain anchors (`href` internal links and `tel:`) with no async submit in Phase 1 — no pending/disabled state exists. |
+| error | E1, E2, E4, E5, E7, E8, E9, E10 | ✅ resolved (explicit) | No runtime fetch → no visitor-facing error state. A malformed content file fails the **build** loudly via content-collection schema validation (see Copywriting Contract error row). |
+| error | E3 (gallery images) | 🧪 backstop | { statement: "If a photo file fails to resolve, the browser's native alt-text fallback displays (required `alt` per DESIGN-04); no custom broken-image UI in v1 — verify visually against a deliberately missing file once the gallery exists.", verification: backstop } |
+| error | E6 (CTA buttons) | ✅ resolved (explicit) | No submit action exists — CTAs navigate or dial; there is no failure mode to design. |
+| empty | E1 (Homes grid) | ✅ resolved (explicit) | Zero listings renders the empty-state heading + body defined in the Copywriting Contract ("No Homes Available Right Now" + phone CTA). |
+| empty | E2 (Property card) | ✅ resolved (explicit) | Cards cannot render data-less: address, price, and status are required schema fields (build fails if absent); optional fields fall back to "Call for details" (D-10). |
+| empty | E3 (gallery) | 🧪 backstop | { statement: "A zero-photo property renders one branded placeholder frame (cream background + leaf mark) instead of a broken layout — untested against a real zero-photo entry (both migrated homes have photos, D-03); verify visually if content ships without photos.", verification: backstop } |
+| empty | E4 (nav) | ✅ resolved (explicit) | Nav items are fixed at build time (7 items) — an empty nav is unreachable. |
+| empty | E5 (badge) | ✅ resolved (explicit) | `status` is a required enum (Available/Pending/Sold) validated at build — a badge always has a value. |
+| empty | E7 (Learn index) | ✅ resolved (explicit) | D-15 guarantees ≥1 seeded post before phase completion. Acceptance: seed post exists in the repo at phase done; no empty-state design is required. |
+| empty | E8 (Learn post) | ✅ resolved (explicit) | Title/date/body are required schema fields; optional `coverImage` absent → header renders with no image slot (never an empty box or broken-image icon). |
+| empty | E9, E10 (static pages) | ✅ resolved (explicit) | Page content is hand-authored in code, not data-driven — pages cannot render contentless. |
+| populated | E1 | ✅ resolved (explicit) | Grid of property cards sorted Available → Pending → Sold (D-05), 24px card gaps, responsive wrap on the 8pt scale. |
+| populated | E2 | ✅ resolved (explicit) | Card anatomy: photo, address (Label), beds/baths/sqft meta, price figures (Heading size, accent), status badge — per Typography/Color sections. |
+| populated | E3 | ✅ resolved (explicit) | Gallery with lightbox; prev/next arrows at 44px touch targets (Spacing exception). |
+| populated | E4 | ✅ resolved (explicit) | 7 items horizontal at ≥768px with accent active-indicator; hamburger drawer below 768px. |
+| populated | E5 | ✅ resolved (explicit) | Three variants pinned in the Color section: Available `#F6C84C`, Pending `#D9B36C`, Sold `#1A1A1A`/cream text. |
+| populated | E7 | ✅ resolved (explicit) | Post cards/list reads correctly at n=1 and scales to many (D-15). |
+| populated | E8 | ✅ resolved (explicit) | Title + date + optional cover image + prose body in a max-width container. |
+| partial | E1, E2 | ✅ resolved (explicit) | Missing beds/baths/sqft renders "Call for details" per field (D-10) — a card never looks visually incomplete. |
+| partial | E4, E5 | ✅ resolved (explicit) | Nav items and badge enum are fixed/validated at build — no partial state is reachable. |
+| partial | E7, E8 | ✅ resolved (explicit) | Only optional field is `coverImage`; absent → layout renders without the image slot. |
+| partial | E9, E10 | ✅ resolved (explicit) | No dynamic data in Phase 1 — hand-authored content has no partial state. |
+| overflow | E1 | ✅ resolved (explicit) | Grid wraps responsively with no fixed max card count; no horizontal scroll. |
+| overflow | E2 | 🧪 backstop | { statement: "Card text wraps within the card (no clipping); photo crops via fixed aspect-ratio container — verify visually with the longest migrated address at mobile width.", verification: backstop } |
+| overflow | E3 | 🧪 backstop | { statement: "No max photo count is set; verify gallery thumbnail layout remains usable at high photo counts (20+) before adding a photo-heavy listing.", verification: backstop } |
+| overflow | E4 | ✅ resolved (explicit) | Below 768px nav collapses to hamburger drawer; all 7 items stack vertically, no truncation or horizontal scroll. |
+| overflow | E5, E6 | ✅ resolved (explicit) | Badge and button copy is fixed and short; padding on the 8pt scale — content cannot exceed its container. |
+| overflow | E7 | 🧪 backstop | { statement: "Learn index grows vertically with no pagination in Phase 1 — acceptable at expected post volume; revisit pagination if the index exceeds ~20 posts.", verification: backstop } |
+| overflow | E8, E9 | ✅ resolved (explicit) | Prose renders in a max-width container with normal word wrap; no clamping or ellipsis, especially on legally-sensitive copy (DESIGN-03). |
+| zero-one-many | E1 | ✅ resolved (explicit) | Layout reads correctly at 1, 2, or many cards; D-05 sort order holds regardless of count; zero-case = empty state above. |
+| zero-one-many | E2, E5 | ✅ resolved (explicit) | Count behavior owned by the grid (E1); exactly one badge per card/page. |
+| zero-one-many | E4 | ✅ resolved (explicit) | Nav item set is fixed at build time — count never varies at runtime. |
+| zero-one-many | E7 | ✅ resolved (explicit) | ≥1 post guaranteed (D-15); list layout scales from 1 to many without redesign. |
+| long-text | E1, E2 | 🧪 backstop | { statement: "Long address lines wrap to a second line at Label size without breaking card alignment — verify visually with the longest real address at 375px width.", verification: backstop } |
+| long-text | E3 | ✅ resolved (explicit) | Gallery renders no visible text besides controls; `alt` text is non-visual in the normal state. |
+| long-text | E4 | 🧪 backstop | { statement: "All 7 nav labels fit on one line at the 768px breakpoint without wrapping — verify at exactly 768px; if they don't fit, raise the hamburger breakpoint rather than shrinking type.", verification: backstop } |
+| long-text | E5, E6, E10 | ✅ resolved (explicit) | Badge, button, and phone-CTA copy is fixed at build time (Copywriting Contract) — no dynamic content risk, no truncation strategy needed. |
+| long-text | E8, E9 | ✅ resolved (explicit) | Prose wraps normally in the max-width container; no truncation, clamping, or ellipsis on descriptive or legally-sensitive copy. |
 
 ---
 
