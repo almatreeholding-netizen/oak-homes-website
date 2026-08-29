@@ -2,7 +2,11 @@
 
 **Phase:** 1 (Foundation)
 **Generated:** 2026-08-29
-**Raised by:** `01-02-PLAN.md` Task 2 (`type="tracer"`)
+**Raised by:** `01-02-PLAN.md` Task 3 (`type="tracer"`), standing on the scaffold and token system
+from `01-02-PLAN.md` Task 2
+**Revised:** 2026-08-29, after cross-AI plan review — the tracer task was split into
+scaffold-and-tokens (Task 2) and schema-layout-route (Task 3) so a scaffold failure does not strand
+the slice; the property route was rebound from the frontmatter `slug` field to the entry `id`
 
 > This is the Phase-1 special case of the tracer: a whole-application slice wired
 > through every layer the project has. Every later phase adds vertical slices on
@@ -40,7 +44,9 @@ content read plus a pre-rendered route *is* the full stack.
 | Auth | **None in Phase 1.** CMS auth is Phase 2 via Netlify's built-in OAuth provider (never Netlify Identity + Git Gateway — deprecated). | No auth surface exists in a static marketing site. |
 | Deployment target | **Not in Phase 1.** Netlify auto-deploy is INFRA-03 (Phase 2). | Phase 1's Definition of Done is a clean local `npm run build` + a push to the private GitHub repo — not a live URL. |
 | Source of truth | Private GitHub repo `almatreeholding-netizen/oak-homes-website`, branch `main`, HTTPS remote authenticated by Git Credential Manager 2.9.0 | No `gh` CLI on this machine; GCM is already the system credential helper, so the first push opens a browser sign-in and needs no extra setup (D-11/D-12). |
-| Directory layout | `src/{content.config.ts, content/, layouts/, components/, pages/, styles/}` + `public/{brand/, uploads/}` + `scripts/` + `docs/reference/` | Flat and conventional; matches RESEARCH.md's recommended structure so Phase 2's CMS config maps cleanly onto it. |
+| Directory layout | `src/{content.config.ts, content/, layouts/, components/, pages/, styles/}` + `public/{brand/, uploads/}` + `scripts/` + `scripts/verify/` + `docs/reference/` | Flat and conventional; matches RESEARCH.md's recommended structure so Phase 2's CMS config maps cleanly onto it. |
+| Route ↔ content binding | `/homes/<slug>` and `/learn/<slug>` route params come from the entry **`id`** (the filename stem); a build-time assertion requires `entry.id === entry.data.slug` | Two files cannot share a filename, so route collisions are impossible by construction rather than by trusting Astro's untested duplicate-param behaviour (RESEARCH.md A1). The `slug` field still exists for Phase 2's CMS form to bind to, and the assertion is what keeps the two from drifting. |
+| Verification | One shell-independent Node CLI, `scripts/verify/checks.mjs`, invoked as `node scripts/verify/checks.mjs <check-id>`; every plan's `<automated>` block is exactly one such invocation | The executor session's shell is Windows PowerShell 5.1, where `&&`, `grep`, `find`, `wc`, and `test` do not work. Bash verify blocks fail to *parse* there rather than to *pass*, which invites verification to be silently skipped. Node is already a hard project dependency and parses the same everywhere. |
 
 ---
 
@@ -96,4 +102,15 @@ architectural decisions above**:
 2. Legally-sensitive copy stays in `.astro` files. The moment it becomes a content-collection field, the CMS can edit it (DESIGN-03).
 3. The shared layout stays the only source of the header, footer, Equal Housing line, phone number, and integrations slot. A page template that renders without them is structurally impossible, which is the point.
 4. `output: 'static'` with no adapter. Adding SSR changes the security model from "no runtime attack surface" to "a server", and nothing in the roadmap needs it.
-5. Property photos are resized before `git add`, never after.
+5. Property photos are resized before `git add`, never after — with a two-axis box constraint
+   (`width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true`) and a pre-write throw, not
+   a width-only resize. A width-only constraint lets a portrait photo through oversized, and git
+   keeps it forever.
+6. A route parameter is derived from the entry `id`, never from a frontmatter field, and every
+   collection route asserts `entry.id === entry.data.slug`. Removing that assertion re-opens a silent
+   drift between a home's permanent URL and the file that claims it.
+7. `.gitignore` keeps the `!.claude/CLAUDE.md` negation. Any tool that rewrites the file — the Astro
+   scaffold did — must be followed by re-asserting it.
+8. Every `<automated>` verification is one `node scripts/verify/checks.mjs <check-id>` invocation.
+   Reintroducing shell-syntax verify blocks reintroduces the failure mode where verification is
+   skipped rather than run.

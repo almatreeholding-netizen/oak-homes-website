@@ -39,11 +39,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Own the repo before anything ships: preserve the mockups and logo sources, flip the repo to Private, connect this computer and push
+- [ ] 01-01-PLAN.md — Own the repo before anything ships: owner stages the mockups and logo sources into the worktree and flips the repo to Private, then verify, commit, and push (also creates `scripts/verify/checks.mjs`, the phase's shell-independent verification CLI)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Walking Skeleton (tracer): scaffold Astro + Tailwind v4 tokens + the full content schema + shared layout, rendering one real home end to end
+- [ ] 01-02-PLAN.md — Walking Skeleton: non-interactive Astro scaffold + Tailwind v4 tokens (Task 2), then the tracer proper — full content schema + shared layout + route rendering one real home end to end (Task 3) — plus the brand mark export (Task 4)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -59,7 +59,7 @@ Plans:
 
 **UI hint**: yes
 
-**User-collaboration checkpoint** *(reduced during planning — see D-11/D-13)*: the Oak Homes GitHub account `almatreeholding-netizen` and the repo `oak-homes-website` **already exist**, so no account-creation walkthrough is needed. What remains owner-facing is a single browser action: flipping the repo from Public to Private (GitHub Settings → Danger Zone), which has no CLI path on this machine. It is planned as a blocking `checkpoint:human-action` in 01-01, and the push is gated behind it by a precondition. Local scaffold work does not block on it.
+**User-collaboration checkpoint** *(reduced during planning — see D-11/D-13; re-scoped after cross-AI review)*: the Oak Homes GitHub account `almatreeholding-netizen` and the repo `oak-homes-website` **already exist**, so no account-creation walkthrough is needed. Two owner-facing actions remain, bundled into one blocking `checkpoint:human-action` at the very top of 01-01: (1) copying the two source HTML files and the nine logo files into the worktree — review found both source paths sit outside the executor's allowed working directories, so an executor cannot reach them and would otherwise either halt the phase or improvise substitutes for the property photos and the legally-refined copy; and (2) flipping the repo from Public to Private (GitHub Settings → Danger Zone), which has no CLI path on this machine. The push is gated behind the checkpoint by a precondition. Local scaffold work does not block on it.
 
 **Carried-forward notes**:
 
