@@ -19,7 +19,7 @@ created: 2026-08-28
 |----------|-------|
 | Tool | none |
 | Preset | not applicable |
-| Component library | none — hand-built Astro components, styled with Tailwind CSS utility classes and a custom theme (`tailwind.config.mjs`) mapping the brand tokens below. Default choice (Claude's discretion per 01-CONTEXT.md); no CSS framework was pre-specified in `.claude/CLAUDE.md`. |
+| Component library | none — hand-built Astro components, styled with Tailwind CSS utility classes and a custom theme mapping the brand tokens below, declared in a **CSS `@theme` block in `src/styles/global.css`**. Default choice (Claude's discretion per 01-CONTEXT.md); no CSS framework was pre-specified in `.claude/CLAUDE.md`. *(Corrected 2026-08-30 after cross-AI plan review round 2: this row previously said the theme lived in `tailwind.config.mjs`, which contradicts SKELETON.md's Styling row, 01-RESEARCH.md Pitfall 2, and 01-02-PLAN.md Task 2. Tailwind v4 is CSS-first — there is no `tailwind.config.mjs` by default, and `@astrojs/tailwind` is deprecated. All five Phase 1 plans already implement the `@theme` form; only this row was stale. Do not revert this row to `tailwind.config.mjs`.)* |
 | Icon library | Lucide, inlined as static SVG at build time (`lucide-static` or hand-copied paths) — zero client-side icon JS, matching the zero-JS-by-default architecture |
 | Font | Lora (headings/display) + Inter (body/labels), self-hosted via `@fontsource/lora` + `@fontsource/inter` (avoids an external Google Fonts request, supports the mobile-performance/SEO goal in DESIGN-05) |
 

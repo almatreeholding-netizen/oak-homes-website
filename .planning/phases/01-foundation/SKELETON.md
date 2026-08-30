@@ -7,6 +7,11 @@ from `01-02-PLAN.md` Task 2
 **Revised:** 2026-08-29, after cross-AI plan review — the tracer task was split into
 scaffold-and-tokens (Task 2) and schema-layout-route (Task 3) so a scaffold failure does not strand
 the slice; the property route was rebound from the frontmatter `slug` field to the entry `id`
+**Revised:** 2026-08-30, after cross-AI plan review round 2 — invariant 5 extended to require an
+all-or-nothing photo write, invariant 6 to pin the loader glob flat, invariant 8 to cover acceptance
+criteria as well as verify blocks, and invariants 9–11 added (no artifact encodes its worktree or
+branch; credential-touching subprocesses carry timeouts; determinism gates assert only what they
+protect)
 
 > This is the Phase-1 special case of the tracer: a whole-application slice wired
 > through every layer the project has. Every later phase adds vertical slices on
@@ -105,12 +110,37 @@ architectural decisions above**:
 5. Property photos are resized before `git add`, never after — with a two-axis box constraint
    (`width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true`) and a pre-write throw, not
    a width-only resize. A width-only constraint lets a portrait photo through oversized, and git
-   keeps it forever.
+   keeps it forever. The write is also **all-or-nothing**: every photo is decoded, resized,
+   re-encoded, and threshold-checked in memory before any file is written, and the writes land under
+   temp names renamed into place as the final step. A per-photo guard inside a write loop is not
+   enough — it stops the offending photo while leaving its predecessors on disk, and partial output
+   plus a re-run is how a stale, wrongly-numbered file reaches a permanent commit.
 6. A route parameter is derived from the entry `id`, never from a frontmatter field, and every
    collection route asserts `entry.id === entry.data.slug`. Removing that assertion re-opens a silent
-   drift between a home's permanent URL and the file that claims it.
+   drift between a home's permanent URL and the file that claims it. The assertion presumes a **flat
+   collection**: every loader glob is `*.md`, not `**/*.md`, because a nested file yields an id
+   containing a path separator, which can never satisfy the lowercase-hyphen slug regex — so nesting
+   would fail the build with a message about slug drift, which is not what went wrong. Widening a
+   glob means the failure message must first learn to name nesting as a cause.
 7. `.gitignore` keeps the `!.claude/CLAUDE.md` negation. Any tool that rewrites the file — the Astro
    scaffold did — must be followed by re-asserting it.
 8. Every `<automated>` verification is one `node scripts/verify/checks.mjs <check-id>` invocation.
    Reintroducing shell-syntax verify blocks reintroduces the failure mode where verification is
-   skipped rather than run.
+   skipped rather than run. The same contract binds `<acceptance_criteria>`, which are what a human
+   re-runs by hand: state a criterion as a fact about a command's output ("the first field of
+   `git ls-remote origin refs/heads/main`"), never as a pipeline (`| cut -f1`).
+9. **No artifact encodes which git worktree or branch it ran in.** Multiple worktrees exist on this
+   repository, their sibling directories are real and sit at nearby commits, and they are
+   indistinguishable in File Explorer. Any path shown to a human is derived at runtime from
+   `git rev-parse --show-toplevel`, and any branch name recorded is read from
+   `git rev-parse --abbrev-ref HEAD`. A hardcoded path does not fail loudly — it succeeds against
+   the wrong tree, and the resulting failure presents as "the files are missing" while they are
+   plainly on disk.
+10. Any `spawnSync` that can trigger a credential prompt carries an explicit `timeout`, and a
+    timeout is a FAIL. Git Credential Manager prompts through a GUI dialog and this environment's
+    stdin is null, so an untimed call blocks forever — and a check that never returns is read as
+    slow, never as broken.
+11. Determinism gates assert the thing they protect, at its own granularity. The property sort is
+    gated on the ordered sequence of card identifiers in `dist/homes/index.html`; whole-tree
+    byte-identical rebuilds are recorded as information, never gated. A gate that fails for reasons
+    unrelated to its purpose gets weakened, and the real assertion is lost along with the noise.
