@@ -282,12 +282,14 @@ const checks = {
       fail(id, `repeated git ls-remote origin failed: ${lsRemote2.stderr}`);
     }
 
-    const logResult = runGit(['log', 'origin/main', '--oneline', '-1']);
+    // Ancestry, not tip: origin/main keeps receiving commits after this plan,
+    // so the rescued-source commit must be reachable from origin/main, not equal to it.
+    const logResult = runGit(['log', 'origin/main', '--oneline']);
     if (!logResult.ok) {
-      fail(id, `git log origin/main --oneline -1 failed: ${logResult.timedOut ? logResult.reason : logResult.stderr}`);
+      fail(id, `git log origin/main --oneline failed: ${logResult.timedOut ? logResult.reason : logResult.stderr}`);
     }
     if (!logResult.stdout.includes('preserve mockup, one-pager, and logo sources in repo')) {
-      fail(id, `git log origin/main --oneline -1 does not show the Task 2 commit — got: '${logResult.stdout}'`);
+      fail(id, `origin/main history does not contain the rescued-source commit`);
     }
 
     pass(id);
