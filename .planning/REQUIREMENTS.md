@@ -52,7 +52,7 @@ Source: approved design spec (`docs/specs/2026-08-28-oak-homes-website-design.md
 
 ### Infrastructure (INFRA)
 
-- [ ] **INFRA-01**: Oak Homes GitHub account created (browser walkthrough with owner) and this computer connected to it
+- [x] **INFRA-01**: Oak Homes GitHub account created (browser walkthrough with owner) and this computer connected to it
 - [ ] **INFRA-02**: Site source + content live in a private GitHub repo (single source of truth)
 - [ ] **INFRA-03**: Netlify builds and deploys automatically on every commit (replacing zip-drag deploys)
 - [ ] **INFRA-04**: The two existing homes (614 E Marengo; Brown St — number confirmed 2734 vs 2437) are migrated with pre-resized photos
@@ -115,7 +115,7 @@ Each v1 requirement maps to exactly one phase. Coverage: **36/36** — no orphan
 | DESIGN-04 | Phase 1 — Foundation | Pending |
 | DESIGN-05 | Phase 1 — Foundation | Pending |
 | DESIGN-06 | Phase 1 — Foundation | Pending |
-| INFRA-01 | Phase 1 — Foundation | Pending |
+| INFRA-01 | Phase 1 — Foundation | Complete |
 | INFRA-02 | Phase 1 — Foundation | Pending |
 | INFRA-03 | Phase 2 — Publishing | Pending |
 | INFRA-04 | Phase 1 — Foundation | Pending |
