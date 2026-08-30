@@ -185,3 +185,14 @@ None — no external service configuration required beyond what Task 1 (reposito
 ---
 *Phase: 01-foundation*
 *Completed: 2026-08-30*
+
+## Self-Check: PASSED
+
+- `docs/reference/Oak-Homes-Website-SHARE.html` — FOUND, 2673638 bytes
+- `docs/reference/Oak-Homes-How-It-Works.html` — FOUND, 22508 bytes
+- `docs/reference/logo-source/` — FOUND, 9 files
+- `scripts/verify/checks.mjs` — FOUND; `sources-staged` and `remote-private` both PASS; `no-such-check` exits non-zero
+- `.planning/phases/01-foundation/01-01-SUMMARY.md` — FOUND on disk
+- Commits `d264e19`, `0652c55`, `3f559c7`, `f906e8f` — all FOUND in `git log --oneline --all`
+- `git status --short` — clean, no accidental deletions in the final commit
+- `git remote -v`, `git ls-remote origin refs/heads/main`, `git log origin/main --oneline -1` — all independently re-verified in this session, matching the plan's acceptance criteria
