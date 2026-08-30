@@ -294,6 +294,198 @@ const checks = {
 
     pass(id);
   },
+
+  /**
+   * Task 2: assert the Astro scaffold stands cleanly — config files present,
+   * the approved dependency set installed (and the deprecated Tailwind v3
+   * integration absent), the build succeeds, .gitignore survived the
+   * scaffold (including the throwaway-tmp-dir entry), and the brand-token
+   * `@theme` block in global.css carries the correct values.
+   */
+  'scaffold-clean': (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    // Config files exist at the project root.
+    const pkgJsonPath = join(toplevel, 'package.json');
+    const astroConfigPath = join(toplevel, 'astro.config.mjs');
+    const tsconfigPath = join(toplevel, 'tsconfig.json');
+    const pkgLockPath = join(toplevel, 'package-lock.json');
+    const gitignorePath = join(toplevel, '.gitignore');
+    const globalCssPath = join(toplevel, 'src', 'styles', 'global.css');
+
+    for (const p of [pkgJsonPath, astroConfigPath, tsconfigPath, pkgLockPath]) {
+      try {
+        statSync(p);
+      } catch {
+        fail(id, `missing required file: ${p}`);
+      }
+    }
+
+    // package.json dependency assertions.
+    let pkg;
+    try {
+      pkg = JSON.parse(readUtf8File(pkgJsonPath));
+    } catch (e) {
+      fail(id, `could not parse package.json: ${e}`);
+    }
+    const deps = pkg.dependencies || {};
+    const devDeps = pkg.devDependencies || {};
+    const requiredDeps = [
+      'astro',
+      'tailwindcss',
+      '@tailwindcss/vite',
+      '@fontsource/lora',
+      '@fontsource/inter',
+      'lucide-static',
+      '@astrojs/sitemap',
+    ];
+    for (const dep of requiredDeps) {
+      if (!Object.prototype.hasOwnProperty.call(deps, dep)) {
+        fail(id, `package.json dependencies missing '${dep}'`);
+      }
+    }
+    if (!Object.prototype.hasOwnProperty.call(devDeps, 'sharp')) {
+      fail(id, `package.json devDependencies missing 'sharp'`);
+    }
+    if (Object.prototype.hasOwnProperty.call(deps, '@astrojs/tailwind') ||
+        Object.prototype.hasOwnProperty.call(devDeps, '@astrojs/tailwind')) {
+      fail(id, `package.json lists the deprecated '@astrojs/tailwind' integration — it must never enter the tree`);
+    }
+
+    // astro.config.mjs assertions.
+    const astroConfig = readUtf8File(astroConfigPath);
+    if (!astroConfig.includes('https://ownwithoak.com')) {
+      fail(id, `astro.config.mjs does not contain 'https://ownwithoak.com'`);
+    }
+    if (!astroConfig.includes('tailwindcss()')) {
+      fail(id, `astro.config.mjs does not contain 'tailwindcss()'`);
+    }
+    if (astroConfig.includes('adapter')) {
+      fail(id, `astro.config.mjs contains an 'adapter' key — Phase 1 ships output: 'static' with no adapter`);
+    }
+    if (astroConfig.includes(`output: 'server'`) || astroConfig.includes('output: "server"') ||
+        astroConfig.includes(`output: 'hybrid'`) || astroConfig.includes('output: "hybrid"')) {
+      fail(id, `astro.config.mjs sets output to 'server' or 'hybrid' — Phase 1 requires static output`);
+    }
+
+    // .gitignore assertions — post-scaffold re-assertion.
+    const gitignore = readUtf8File(gitignorePath);
+    const gitignoreLines = gitignore.split(/\r\n|\n/);
+    const requiredGitignoreLines = [
+      '.claude/*',
+      '!.claude/CLAUDE.md',
+      'node_modules/',
+      'dist/',
+      '.astro/',
+      '.env',
+      '.astro-scaffold-tmp/',
+    ];
+    for (const line of requiredGitignoreLines) {
+      if (!gitignoreLines.includes(line)) {
+        fail(id, `.gitignore missing a line equal to '${line}' after the scaffold`);
+      }
+    }
+
+    // Untracked-file assertions after install + build.
+    const statusResult = runGit(['status', '--porcelain']);
+    if (!statusResult.ok) {
+      fail(id, `git status --porcelain failed: ${statusResult.reason || statusResult.stderr}`);
+    }
+    const untrackedForbidden = ['node_modules', 'dist', '.astro-scaffold-tmp'];
+    for (const line of statusResult.stdout.split(/\r\n|\n/)) {
+      if (!line.startsWith('??')) continue;
+      const path = line.slice(3).trim();
+      for (const forbidden of untrackedForbidden) {
+        if (path === forbidden || path.startsWith(forbidden + '/')) {
+          fail(id, `git status --porcelain lists '${path}' as untracked — .gitignore is not excluding it`);
+        }
+      }
+    }
+
+    // No throwaway scaffold file was ever committed.
+    const lsFilesResult = runGit(['ls-files']);
+    if (!lsFilesResult.ok) {
+      fail(id, `git ls-files failed: ${lsFilesResult.reason || lsFilesResult.stderr}`);
+    }
+    const trackedUnderTmp = lsFilesResult.stdout
+      .split(/\r\n|\n/)
+      .filter((p) => p.startsWith('.astro-scaffold-tmp/'));
+    if (trackedUnderTmp.length > 0) {
+      fail(id, `git ls-files returned ${trackedUnderTmp.length} path(s) under .astro-scaffold-tmp/: ${trackedUnderTmp.join(', ')}`);
+    }
+
+    // global.css brand-token assertions.
+    let globalCss;
+    try {
+      globalCss = readUtf8File(globalCssPath);
+    } catch {
+      fail(id, `missing file: ${globalCssPath}`);
+    }
+    if (!globalCss.includes('@theme')) {
+      fail(id, `${globalCssPath} does not contain an '@theme' block`);
+    }
+    const requiredTokens = [
+      '--color-cream',
+      '--color-cream-deep',
+      '--color-accent',
+      '--color-accent-hover',
+      '--color-price-gold',
+      '--color-ink',
+      '--color-pending',
+      '--color-destructive',
+      '--font-display',
+      '--font-body',
+    ];
+    for (const token of requiredTokens) {
+      if (!globalCss.includes(token)) {
+        fail(id, `${globalCssPath} is missing token '${token}'`);
+      }
+    }
+    if (!globalCss.includes('#FFD053')) {
+      fail(id, `${globalCssPath} is missing the accent value #FFD053`);
+    }
+    if (!globalCss.includes('#A87E24')) {
+      fail(id, `${globalCssPath} is missing the price-gold value #A87E24`);
+    }
+    if (globalCss.toUpperCase().includes('F6C84C')) {
+      fail(id, `${globalCssPath} contains the superseded design-spec yellow estimate F6C84C`);
+    }
+    if (!globalCss.includes('@fontsource/lora/400.css') || !globalCss.includes('@fontsource/lora/600.css')) {
+      fail(id, `${globalCssPath} does not import both @fontsource/lora weight 400 and 600`);
+    }
+    if (!globalCss.includes('@fontsource/inter/400.css') || !globalCss.includes('@fontsource/inter/600.css')) {
+      fail(id, `${globalCssPath} does not import both @fontsource/inter weight 400 and 600`);
+    }
+    if (globalCss.includes('fonts.googleapis.com')) {
+      fail(id, `${globalCssPath} references fonts.googleapis.com — fonts must be self-hosted`);
+    }
+
+    // The build itself. `npm.cmd` cannot be spawned directly via spawnSync's
+    // argv form on Windows (EINVAL — it is a batch shim, not a real
+    // executable), so this uses shell:true with a single fixed command
+    // string (no args array, so there is nothing for the shell to
+    // re-interpret from external input) rather than an argv array. Explicit
+    // timeout: not a credential-touching subprocess, but an unbounded build
+    // hang is still a real failure mode worth capping.
+    const buildResult = spawnSync('npm run build', {
+      cwd: toplevel,
+      encoding: 'utf8',
+      timeout: 180000,
+      shell: true,
+    });
+    if (buildResult.error && buildResult.error.code === 'ETIMEDOUT') {
+      fail(id, `npm run build timed out after 180000ms`);
+    }
+    if (buildResult.status !== 0) {
+      fail(id, `npm run build exited ${buildResult.status}:\n${(buildResult.stdout || '').slice(-2000)}\n${(buildResult.stderr || '').slice(-2000)}`);
+    }
+
+    pass(id);
+  },
 };
 
 // ---------------------------------------------------------------------------
