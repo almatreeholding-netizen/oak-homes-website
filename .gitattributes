@@ -1,0 +1,2 @@
+# Rescued source material must remain byte-exact — never eol-normalize
+docs/reference/** -text
