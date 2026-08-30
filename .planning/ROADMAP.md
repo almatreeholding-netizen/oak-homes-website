@@ -34,12 +34,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. How It Works (with the FAQ folded in), About, Learn (index plus at least one post), and Schedule a Showing are reachable from the navigation, read correctly at phone width, and pass WCAG 2.1 AA basics — alt text, contrast, keyboard-navigable forms and menus.
   5. Adding or changing a home requires editing only its markdown file and photos — no template edits — and the build fails loudly when a required field is missing or malformed.
 
-**Plans**: 5 plans
+**Plans**: 1/5 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Own the repo before anything ships: owner stages the mockups and logo sources into the worktree and flips the repo to Private, then verify, commit, and push (also creates `scripts/verify/checks.mjs`, the phase's shell-independent verification CLI)
+- [x] 01-01-PLAN.md — Own the repo before anything ships: owner stages the mockups and logo sources into the worktree and flips the repo to Private, then verify, commit, and push (also creates `scripts/verify/checks.mjs`, the phase's shell-independent verification CLI)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -144,7 +144,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/5 | Planned | - |
+| 1. Foundation | 1/5 | In Progress|  |
 | 2. Publishing | 0/TBD | Not started | - |
 | 3. Integrations | 0/TBD | Not started | - |
 | 4. Launch | 0/TBD | Not started | - |
