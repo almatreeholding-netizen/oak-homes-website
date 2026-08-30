@@ -1,2 +1,11 @@
 .claude/*
 !.claude/CLAUDE.md
+
+# Build output and environment secrets (added 01-01, ahead of the Astro
+# scaffold in 01-02, so npm install never has a window to commit either)
+node_modules/
+dist/
+.astro/
+.env
+.env.*
+!.env.example
