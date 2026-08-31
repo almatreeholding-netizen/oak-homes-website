@@ -1,0 +1,31 @@
+/* src/styles/global.css
+ *
+ * Tailwind v4 is CSS-first: there is no tailwind.config.mjs. Brand tokens
+ * are declared in this @theme block per RESEARCH.md Pattern 3 and
+ * SKELETON.md's Styling row. Fonts are self-hosted via @fontsource — no
+ * external font-CDN request anywhere in this file or its imports.
+ */
+@import "tailwindcss";
+
+/* Self-hosted Lora (display/headings) and Inter (body/labels), weights
+ * 400 and 600 only — the type scale allows exactly two weights. */
+@import "@fontsource/lora/400.css";
+@import "@fontsource/lora/600.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/600.css";
+
+@theme {
+  /* Color — UI-SPEC ## Color table */
+  --color-cream: #FFFDF7;
+  --color-cream-deep: #FBF4E4;
+  --color-accent: #FFD053;
+  --color-accent-hover: #EDB52F;
+  --color-price-gold: #A87E24;
+  --color-ink: #1A1A1A;
+  --color-pending: #D9B36C;
+  --color-destructive: #B3261E;
+
+  /* Typography — self-hosted, no external font CDN request */
+  --font-display: "Lora", serif;
+  --font-body: "Inter", sans-serif;
+}

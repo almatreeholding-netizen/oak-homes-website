@@ -9,3 +9,8 @@ dist/
 .env
 .env.*
 !.env.example
+
+# Throwaway fallback-scaffold staging directory (01-02 Task 2). Ignored
+# before the fallback scaffold ever runs, so a failed cleanup cannot sweep
+# it into the first site commit.
+.astro-scaffold-tmp/
