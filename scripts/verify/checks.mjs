@@ -1922,7 +1922,16 @@ const checks = {
       }
     }
 
-    // -- 5. Lazy-hydration marker + single client script ----------------------
+    // -- 5. Lazy-hydration marker + exactly the two client-side islands -------
+    //
+    // SKELETON.md names two islands: the gallery lightbox and the mobile nav
+    // drawer toggle. As of 01-05 Task 1 the drawer toggle is a real <button>
+    // driven by a script (trap Tab, close on Escape, return focus) rather
+    // than the checkbox+label CSS-only hack it started as -- that hack had
+    // no script tag at all, which this assertion used to encode as "exactly
+    // 1". Two script tags is now the correct count for every page: Nav.astro
+    // (rendered by every page via Layout.astro) plus Gallery.astro (rendered
+    // only on property pages).
 
     for (const [html, path] of [
       [marengoHtml, marengoPagePath],
@@ -1932,8 +1941,8 @@ const checks = {
         fail(id, `${path} does not carry the data-hydrate="client:visible" marker on the gallery`);
       }
       const scriptCount = countOccurrences(html, '<script');
-      if (scriptCount !== 1) {
-        fail(id, `${path} contains ${scriptCount} <script tags, expected exactly 1 (the gallery lightbox -- the nav drawer toggle is pure CSS)`);
+      if (scriptCount !== 2) {
+        fail(id, `${path} contains ${scriptCount} <script tags, expected exactly 2 (the nav drawer toggle and the gallery lightbox -- SKELETON.md's two client-side islands)`);
       }
     }
 
