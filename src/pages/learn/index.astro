@@ -1,0 +1,102 @@
+---
+// src/pages/learn/index.astro
+//
+// Blog index (EDU-04). Lists posts newest first; a post without a
+// coverImage renders its card with no image slot at all -- never an empty
+// box, never a broken-image icon. Reads correctly at a single post (what it
+// contains today, D-15) and scales to many without redesign. No pagination
+// in Phase 1 (UI-SPEC overflow/E7 backstop).
+import { getCollection } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+
+const posts = await getCollection('blog');
+const sorted = [...posts].sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+
+// timeZone: 'UTC' pins the rendered date to the frontmatter's calendar date
+// regardless of the build machine's local timezone -- without it, a UTC
+// midnight date can render as the previous day on a machine west of UTC.
+const dateFormatter = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
+---
+
+<Layout title="Learn" description="Guides to help you understand owner financing and land contracts before you reach out.">
+  <section class="learn-index">
+    <h1>Learn</h1>
+    <p class="lead">Plain-language guides to help you understand how this works, before you reach out.</p>
+
+    <ul class="post-list">
+      {sorted.map((entry) => (
+        <li class="post-card">
+          <a href={`/learn/${entry.id}`} class="post-card-link">
+            {entry.data.coverImage && (
+              <img
+                class="post-cover"
+                src={entry.data.coverImage}
+                width="700"
+                height="394"
+                alt={`${entry.data.title} cover`}
+                loading="lazy"
+                decoding="async"
+              />
+            )}
+            <div class="post-body">
+              <h2>{entry.data.title}</h2>
+              <p class="post-date">{dateFormatter.format(entry.data.date)}</p>
+            </div>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </section>
+</Layout>
+
+<style>
+  .learn-index {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+  }
+
+  .learn-index .lead {
+    font-size: 19px;
+    line-height: 1.5;
+    max-width: 70ch;
+  }
+
+  .post-list {
+    list-style: none;
+    margin: 24px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 16px;
+  }
+
+  .post-card {
+    background-color: var(--color-cream-deep);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .post-card-link {
+    display: block;
+    text-decoration: none;
+    color: var(--color-ink);
+  }
+
+  .post-cover {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 700 / 394;
+    object-fit: cover;
+  }
+
+  .post-body {
+    padding: 16px 20px;
+  }
+
+  .post-date {
+    font-size: 14px;
+    font-weight: 400;
+    margin: 4px 0 0;
+  }
+</style>
