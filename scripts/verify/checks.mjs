@@ -145,6 +145,24 @@ function clearAstroCache(cwd) {
   rmSync(join(cwd, 'node_modules', '.astro'), { recursive: true, force: true });
 }
 
+/**
+ * Replace a property content file's `photos:` block (everything from the
+ * `photos:` key up to, but excluding, `publishDate:`) with a literal value.
+ * Used to build a temporary zero-photo fixture out of a real, photo-bearing
+ * entry -- both migrated homes have photos post-01-03-Task-1 (D-03), so the
+ * UI-SPEC E3 empty-state row can no longer be exercised by a naturally
+ * zero-photo entry and must be proven via a mutate-build-assert-revert
+ * round-trip instead (01-03-PLAN.md Task 3 continuation note).
+ */
+function withPhotosField(content, literalValue, checkId) {
+  const startIdx = content.indexOf('photos:');
+  const endIdx = content.indexOf('publishDate:', startIdx);
+  if (startIdx === -1 || endIdx === -1) {
+    fail(checkId, `could not locate a 'photos:' ... 'publishDate:' span to mutate`);
+  }
+  return content.slice(0, startIdx) + `photos: ${literalValue}\n` + content.slice(endIdx);
+}
+
 // ---------------------------------------------------------------------------
 // Checks
 // ---------------------------------------------------------------------------
@@ -561,6 +579,10 @@ const checks = {
     const distHomesDir = join(toplevel, 'dist', 'homes');
     const propertiesDir = join(toplevel, 'src', 'content', 'properties');
     const propertyFile = join(propertiesDir, '614-e-marengo-st.md');
+    // Added by 01-03 Task 1 (D-03) after this check was first written --
+    // step 10's "empty collection" proof must move both real entries out,
+    // not just Marengo, or Brown Street's file alone still yields 1 page.
+    const brownPropertyFile = join(propertiesDir, '2734-brown-st.md');
     const settingsPath = join(toplevel, 'src', 'content', 'settings.json');
     const contentConfigPath = join(toplevel, 'src', 'content.config.ts');
     const legacyContentConfigPath = join(toplevel, 'src', 'content', 'config.ts');
@@ -768,13 +790,35 @@ const checks = {
         fail(id, `dist/homes/*/index.html count is ${pagesCount}, expected ${mdFileCount} (one per src/content/properties/*.md file)`);
       }
 
-      // -- 6. Zero-photo entry builds (Marengo's photos are already []) ---
+      // -- 6. Zero-photo entry builds -------------------------------------
+      //
+      // Both migrated homes carry real photos as of 01-03 Task 1 (D-03), so
+      // this invariant -- a properties collection entry with an empty
+      // `photos` array still builds -- can no longer be exercised by a
+      // naturally zero-photo entry the way it could when this check was
+      // first written. Proven instead via a temporary fixture: mutate
+      // Marengo's `photos` to `[]`, build, assert success, then revert and
+      // rebuild. The detailed placeholder-frame assertions (brand asset
+      // present, no dangling <img> pointing at a removed photo path) live in
+      // the property-page check's own zero-photo proof (01-03 Task 3); this
+      // check only needs to prove the *build* succeeds with the empty array,
+      // which is what this step originally asserted.
 
-      if (!originalPropertyFile.includes('photos: []')) {
-        fail(id, `src/content/properties/614-e-marengo-st.md does not have an empty photos array — the baseline build above no longer exercises the zero-photo state`);
+      writeFileSync(propertyFile, withPhotosField(originalPropertyFile, '[]', id), 'utf8');
+      clearAstroCache(toplevel);
+      build = runBuild(toplevel);
+      writeFileSync(propertyFile, originalPropertyFile, 'utf8');
+      if (build.timedOut) {
+        fail(id, `zero-photo-fixture build timed out`);
       }
-      // The baseline build in step 1 already proved this exact state builds
-      // clean, so no separate mutation/build round-trip is needed here.
+      if (build.status !== 0) {
+        fail(id, `zero-photo-fixture build exited ${build.status}, expected 0 -- a properties entry with an empty photos array must still build:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+      }
+      clearAstroCache(toplevel);
+      build = runBuild(toplevel);
+      if (build.status !== 0) {
+        fail(id, `rebuild after reverting the zero-photo fixture exited ${build.status}, expected 0`);
+      }
 
       // -- 7. Schema validation actually fires (status enum + downPayment) --
 
@@ -846,12 +890,20 @@ const checks = {
       }
 
       // -- 10. Empty properties collection builds, produces zero pages -----
+      //
+      // Both real homes must move out -- 01-03 Task 1 (D-03) added Brown
+      // Street alongside Marengo, so moving only one file now leaves a
+      // non-empty collection (Brown Street's own page still builds) rather
+      // than exercising the true zero-entries state this step asserts.
 
       const movedPath = join(toplevel, '.tmp-moved-property.md.bak');
+      const movedBrownPath = join(toplevel, '.tmp-moved-property-brown.md.bak');
       renameSync(propertyFile, movedPath);
+      renameSync(brownPropertyFile, movedBrownPath);
       clearAstroCache(toplevel);
       build = runBuild(toplevel);
       renameSync(movedPath, propertyFile);
+      renameSync(movedBrownPath, brownPropertyFile);
       if (build.timedOut) {
         fail(id, `empty-collection build timed out`);
       }
@@ -1077,16 +1129,46 @@ const checks = {
       }
     }
 
-    // Property page's gallery region carries the placeholder mark while
-    // photos is empty.
+    // Property page's zero-photo placeholder carries the brand mark.
+    //
+    // Both migrated homes carry real photos as of 01-03 Task 1 (D-03), so
+    // this can no longer be observed on Marengo's ordinary built page the
+    // way it could when this check was first written -- Gallery.astro
+    // (01-03 Task 3) also replaced the old inline `.gallery-region` wrapper
+    // with `.gallery-placeholder`, rendered only in the zero-photo branch.
+    // Proven via the same mutate-build-assert-revert fixture pattern used
+    // elsewhere in this file: temporarily empty Marengo's `photos`, build,
+    // assert the placeholder renders a brand asset, then revert and rebuild
+    // so this check leaves the tree in its real, known-good built state.
     const propertyPagePath = join(distDir, 'homes', '614-e-marengo-st', 'index.html');
-    if (!existsSync(propertyPagePath)) {
-      fail(id, `missing ${propertyPagePath}`);
+    const marengoPropertyFile = join(toplevel, 'src', 'content', 'properties', '614-e-marengo-st.md');
+    const originalMarengoContent = readUtf8File(marengoPropertyFile);
+
+    writeFileSync(marengoPropertyFile, withPhotosField(originalMarengoContent, '[]', id), 'utf8');
+    clearAstroCache(toplevel);
+    const zeroPhotoBuild = runBuild(toplevel);
+    writeFileSync(marengoPropertyFile, originalMarengoContent, 'utf8');
+    if (zeroPhotoBuild.timedOut) {
+      fail(id, `zero-photo-fixture build timed out`);
     }
-    const propertyPage = readUtf8File(propertyPagePath);
-    const galleryRegionMatch = propertyPage.match(/<div class="gallery-region"[^]*?<\/div>\s*<\/div>/);
-    if (!galleryRegionMatch || !galleryRegionMatch[0].includes('/brand/')) {
-      fail(id, `${propertyPagePath}'s gallery-region does not reference a brand asset — the zero-photo placeholder must render the mark`);
+    if (zeroPhotoBuild.status !== 0) {
+      fail(id, `zero-photo-fixture build exited ${zeroPhotoBuild.status}, expected 0`);
+    }
+    if (!existsSync(propertyPagePath)) {
+      fail(id, `missing ${propertyPagePath} after the zero-photo-fixture build`);
+    }
+    const zeroPhotoPage = readUtf8File(propertyPagePath);
+    const placeholderMatch = zeroPhotoPage.match(/<div class="gallery-placeholder"[^]*?<\/div>/);
+    if (!placeholderMatch || !placeholderMatch[0].includes('/brand/')) {
+      fail(id, `${propertyPagePath}'s gallery-placeholder does not reference a brand asset — the zero-photo placeholder must render the mark`);
+    }
+
+    // Rebuild with the real content so this check leaves dist/ reflecting
+    // the committed, photo-bearing entries rather than the fixture.
+    clearAstroCache(toplevel);
+    const finalBuild = runBuild(toplevel);
+    if (finalBuild.status !== 0) {
+      fail(id, `final rebuild after the zero-photo fixture exited ${finalBuild.status}, expected 0`);
     }
 
     pass(id);
@@ -1634,6 +1716,258 @@ const checks = {
     }
 
     // -- 6. Final rebuild -- leave the tree in a known-good built state -----
+
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `final rebuild after all mutation round-trips exited ${build.status}, expected 0`);
+    }
+
+    pass(id);
+  },
+
+  /**
+   * Task 3: the property page -- gallery, lightbox wiring, specs, and the
+   * status-aware CTA. Same restore-before-fail discipline as homes-grid:
+   * fail() calls process.exit() directly, so every mutation is reverted
+   * immediately after the build that consumes it, before any assertion that
+   * could call fail() runs.
+   */
+  'property-page': (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const propertiesDir = join(toplevel, 'src', 'content', 'properties');
+    const marengoFile = join(propertiesDir, '614-e-marengo-st.md');
+    const brownFile = join(propertiesDir, '2734-brown-st.md');
+    const marengoPagePath = join(toplevel, 'dist', 'homes', '614-e-marengo-st', 'index.html');
+    const brownPagePath = join(toplevel, 'dist', 'homes', '2734-brown-st', 'index.html');
+
+    const originalMarengo = readUtf8File(marengoFile);
+    const originalBrown = readUtf8File(brownFile);
+
+    function assertNonEmptyAltsWithDims(html, label) {
+      const contentWithoutComments = html.replace(/<!--[^]*?-->/g, '');
+      const imgTagRegex = /<img\b[^>]*>/g;
+      let imgMatch;
+      while ((imgMatch = imgTagRegex.exec(contentWithoutComments)) !== null) {
+        const tag = imgMatch[0];
+        const altMatch = tag.match(/\balt="([^"]*)"/);
+        const hasBareAlt = /\balt(?=[\s>])/.test(tag) && !altMatch;
+        const hasNonEmptyAlt = altMatch && altMatch[1].length > 0;
+        const hasAriaHiddenTrue = tag.includes('aria-hidden="true"');
+        if (!hasNonEmptyAlt && !(hasBareAlt && hasAriaHiddenTrue) && !(altMatch && altMatch[1] === '' && hasAriaHiddenTrue)) {
+          fail(id, `${label} has an <img> with neither a non-empty alt nor an empty-alt+aria-hidden="true" pairing: ${tag}`);
+        }
+        if (!/\bwidth="\d+"/.test(tag) || !/\bheight="\d+"/.test(tag)) {
+          fail(id, `${label} has an <img> missing an explicit numeric width/height: ${tag}`);
+        }
+      }
+    }
+
+    // -- 1. Baseline build ---------------------------------------------------
+
+    clearAstroCache(toplevel);
+    let build = runBuild(toplevel);
+    if (build.timedOut) {
+      fail(id, `baseline npm run build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `baseline npm run build exited ${build.status}:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+    }
+    if (!existsSync(marengoPagePath)) {
+      fail(id, `missing ${marengoPagePath}`);
+    }
+    if (!existsSync(brownPagePath)) {
+      fail(id, `missing ${brownPagePath}`);
+    }
+
+    let marengoHtml = readUtf8File(marengoPagePath);
+    let brownHtml = readUtf8File(brownPagePath);
+
+    // -- 2. Gallery image counts and cover-first ordering --------------------
+
+    function photoRefs(html, slug) {
+      const re = new RegExp(`/uploads/properties/${slug}/photo-(\\d+)\\.jpg`, 'g');
+      const seen = new Set();
+      let m;
+      while ((m = re.exec(html)) !== null) seen.add(m[1]);
+      return [...seen].sort();
+    }
+
+    const marengoRefs = photoRefs(marengoHtml, '614-e-marengo-st');
+    if (marengoRefs.length !== 6) {
+      fail(id, `${marengoPagePath} references ${marengoRefs.length} distinct Marengo photos, expected exactly 6`);
+    }
+    const brownRefs = photoRefs(brownHtml, '2734-brown-st');
+    if (brownRefs.length !== 5) {
+      fail(id, `${brownPagePath} references ${brownRefs.length} distinct Brown Street photos, expected exactly 5`);
+    }
+
+    const marengoFirstAny = marengoHtml.indexOf('/uploads/properties/614-e-marengo-st/photo-');
+    const marengoFirstCover = marengoHtml.indexOf('/uploads/properties/614-e-marengo-st/photo-01.jpg');
+    if (marengoFirstCover === -1 || marengoFirstCover !== marengoFirstAny) {
+      fail(id, `${marengoPagePath}'s first referenced photo is not photo-01.jpg (cover must be the first array entry, PROP-01)`);
+    }
+    const brownFirstAny = brownHtml.indexOf('/uploads/properties/2734-brown-st/photo-');
+    const brownFirstCover = brownHtml.indexOf('/uploads/properties/2734-brown-st/photo-01.jpg');
+    if (brownFirstCover === -1 || brownFirstCover !== brownFirstAny) {
+      fail(id, `${brownPagePath}'s first referenced photo is not photo-01.jpg`);
+    }
+
+    assertNonEmptyAltsWithDims(marengoHtml, marengoPagePath);
+    assertNonEmptyAltsWithDims(brownHtml, brownPagePath);
+
+    // -- 3. Terms, description, and feature bullets ---------------------------
+
+    for (const currency of ['$3,000', '$950']) {
+      if (!marengoHtml.includes(currency)) {
+        fail(id, `${marengoPagePath} does not contain '${currency}'`);
+      }
+    }
+    for (const currency of ['$3,000', '$1,250']) {
+      if (!brownHtml.includes(currency)) {
+        fail(id, `${brownPagePath} does not contain '${currency}'`);
+      }
+    }
+    if (!marengoHtml.includes('This home could be a great fit')) {
+      fail(id, `${marengoPagePath} does not contain its description text`);
+    }
+    if (!brownHtml.includes('This home offers plenty of space')) {
+      fail(id, `${brownPagePath} does not contain its description text`);
+    }
+    for (const bullet of ['Bonus room', 'Central air', 'Full basement', 'Detached garage', 'Spacious living', 'Covered front porch']) {
+      if (!marengoHtml.includes(bullet)) {
+        fail(id, `${marengoPagePath} is missing feature bullet '${bullet}'`);
+      }
+    }
+    for (const bullet of ['Updated kitchen', 'Wood laminate flooring', 'Vinyl windows and siding', 'Updated roof', 'laundry in unit', 'Detached two-car garage']) {
+      if (!brownHtml.includes(bullet)) {
+        fail(id, `${brownPagePath} is missing feature bullet '${bullet}'`);
+      }
+    }
+
+    const marengoCallForDetails = countOccurrences(marengoHtml, 'Call for details');
+    if (marengoCallForDetails !== 3) {
+      fail(id, `${marengoPagePath} contains ${marengoCallForDetails} occurrences of 'Call for details', expected exactly 3`);
+    }
+    const brownCallForDetails = countOccurrences(brownHtml, 'Call for details');
+    if (brownCallForDetails !== 1) {
+      fail(id, `${brownPagePath} contains ${brownCallForDetails} occurrences of 'Call for details', expected exactly 1 (square footage only)`);
+    }
+
+    // -- 4. Inquire CTA on both baseline (Available) pages --------------------
+
+    for (const [html, path, slug] of [
+      [marengoHtml, marengoPagePath, '614-e-marengo-st'],
+      [brownHtml, brownPagePath, '2734-brown-st'],
+    ]) {
+      if (!html.includes('Inquire About This Home')) {
+        fail(id, `${path} does not contain 'Inquire About This Home'`);
+      }
+      if (!html.includes(`/contact?property=${slug}`)) {
+        fail(id, `${path} does not contain an href referencing '/contact?property=${slug}'`);
+      }
+    }
+
+    // -- 5. Lazy-hydration marker + single client script ----------------------
+
+    for (const [html, path] of [
+      [marengoHtml, marengoPagePath],
+      [brownHtml, brownPagePath],
+    ]) {
+      if (!html.includes('data-hydrate="client:visible"')) {
+        fail(id, `${path} does not carry the data-hydrate="client:visible" marker on the gallery`);
+      }
+      const scriptCount = countOccurrences(html, '<script');
+      if (scriptCount !== 1) {
+        fail(id, `${path} contains ${scriptCount} <script tags, expected exactly 1 (the gallery lightbox -- the nav drawer toggle is pure CSS)`);
+      }
+    }
+
+    // -- 6. Sold path: Marengo -> Sold ----------------------------------------
+
+    writeFileSync(marengoFile, originalMarengo.replace('status: "Available"', 'status: "Sold"'), 'utf8');
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    writeFileSync(marengoFile, originalMarengo, 'utf8');
+    if (build.timedOut) {
+      fail(id, `sold-status build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `sold-status build exited ${build.status}, expected 0`);
+    }
+    const soldHtml = readUtf8File(marengoPagePath);
+    if (!soldHtml.includes('See Available Homes')) {
+      fail(id, `sold-status page does not contain 'See Available Homes'`);
+    }
+    if (!/href="\/homes"[^>]*>\s*See Available Homes/.test(soldHtml) && !soldHtml.includes('href="/homes"')) {
+      fail(id, `sold-status page's 'See Available Homes' control does not link to '/homes'`);
+    }
+    if (soldHtml.includes('Inquire About This Home')) {
+      fail(id, `sold-status page still contains 'Inquire About This Home' -- D-09 requires it be replaced entirely, not merely disabled`);
+    }
+
+    // Revert build, confirm Inquire returns.
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `post-sold-revert rebuild exited ${build.status}, expected 0`);
+    }
+    if (!readUtf8File(marengoPagePath).includes('Inquire About This Home')) {
+      fail(id, `Marengo page does not contain 'Inquire About This Home' after reverting the Sold mutation`);
+    }
+
+    // -- 7. Pending path: Inquire stays active --------------------------------
+
+    writeFileSync(marengoFile, originalMarengo.replace('status: "Available"', 'status: "Pending"'), 'utf8');
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    writeFileSync(marengoFile, originalMarengo, 'utf8');
+    if (build.timedOut) {
+      fail(id, `pending-status build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `pending-status build exited ${build.status}, expected 0`);
+    }
+    if (!readUtf8File(marengoPagePath).includes('Inquire About This Home')) {
+      fail(id, `pending-status page does not contain 'Inquire About This Home' -- D-09 keeps it active on Pending`);
+    }
+
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `post-pending-revert rebuild exited ${build.status}, expected 0`);
+    }
+
+    // -- 8. Zero-photo placeholder ---------------------------------------------
+
+    writeFileSync(marengoFile, withPhotosField(originalMarengo, '[]', id), 'utf8');
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    writeFileSync(marengoFile, originalMarengo, 'utf8');
+    if (build.timedOut) {
+      fail(id, `zero-photo build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `zero-photo build exited ${build.status}, expected 0`);
+    }
+    const zeroPhotoHtml = readUtf8File(marengoPagePath);
+    if (!zeroPhotoHtml.includes('gallery-placeholder')) {
+      fail(id, `zero-photo page does not render the gallery-placeholder frame`);
+    }
+    const placeholderMatch = zeroPhotoHtml.match(/<div class="gallery-placeholder"[^]*?<\/div>/);
+    if (!placeholderMatch || !placeholderMatch[0].includes('/brand/')) {
+      fail(id, `zero-photo page's gallery-placeholder does not reference a brand asset`);
+    }
+    if (zeroPhotoHtml.includes('/uploads/properties/614-e-marengo-st/photo-')) {
+      fail(id, `zero-photo page still references a Marengo photo path -- the empty-photos state must not leave a broken <img> pointing at a nonexistent file`);
+    }
+
+    // -- 9. Final rebuild -- leave the tree in a known-good built state -------
 
     clearAstroCache(toplevel);
     build = runBuild(toplevel);
