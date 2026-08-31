@@ -1,0 +1,53 @@
+---
+// src/components/StatusBadge.astro
+//
+// The three pinned badge variants (01-UI-SPEC.md ## Color, populated/E5).
+// Status is carried as visible text on every variant, never by colour alone
+// -- the fill differs per status but the label is what actually says
+// "Available"/"Pending"/"Sold". `status` is a required schema enum
+// (src/content.config.ts), so a badge always has a value to render
+// (UI-SPEC empty/E5).
+export interface Props {
+  status: 'Available' | 'Pending' | 'Sold';
+  class?: string;
+}
+
+const { status, class: className } = Astro.props;
+---
+
+<span class:list={['status-badge', `status-${status.toLowerCase()}`, className]}>{status}</span>
+
+<style>
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  /* Available: accent fill (UI-SPEC ## Color) -- ink text, since accent is
+     a fill-only colour and never text-on-cream. */
+  .status-available {
+    background-color: var(--color-accent);
+    color: var(--color-ink);
+  }
+
+  /* Pending: the duller, non-accent informational tone -- visually related
+     to but clearly recessive against Available. */
+  .status-pending {
+    background-color: var(--color-pending);
+    color: var(--color-ink);
+  }
+
+  /* Sold: ink fill with cream text, reading as a stamp (D-05's
+     social-proof framing) rather than an active listing. */
+  .status-sold {
+    background-color: var(--color-ink);
+    color: var(--color-cream);
+  }
+</style>

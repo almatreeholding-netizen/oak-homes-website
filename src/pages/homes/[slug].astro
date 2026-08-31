@@ -11,7 +11,9 @@
 // apart.
 import { getCollection, type CollectionEntry } from 'astro:content';
 import Layout from '../../layouts/Layout.astro';
-import BrandMark from '../../components/BrandMark.astro';
+import Gallery from '../../components/Gallery.astro';
+import StatusBadge from '../../components/StatusBadge.astro';
+import Button from '../../components/Button.astro';
 
 export async function getStaticPaths() {
   const properties = await getCollection('properties');
@@ -58,39 +60,35 @@ const { title, address, status, downPayment, monthlyPayment, beds, baths, sqft, 
 
 const money = (n: number) => `$${n.toLocaleString('en-US')}`;
 const detail = (n: number | undefined, unit: string) => (n === undefined ? 'Call for details' : `${n}${unit}`);
+
+// D-09: Inquire stays active on Available AND Pending (it captures backup
+// leads on a fall-through); only Sold replaces it entirely with a link back
+// to the grid. Status is also carried by the badge -- never colour alone.
+const canInquire = status === 'Available' || status === 'Pending';
 ---
 
 <Layout title={title} description={description}>
   <article class="property">
     <header class="property-header">
       <h1>{address}</h1>
-      <span class={`status-badge status-${status.toLowerCase()}`}>{status}</span>
+      <StatusBadge status={status} />
     </header>
+
+    <Gallery photos={photos} address={address} />
 
     <div class="property-terms">
       <p class="price">
         <span class="price-figure">{money(downPayment)}</span> down &middot;
         <span class="price-figure">{money(monthlyPayment)}</span>/mo
       </p>
+      <p class="terms-note">
+        This is not the complete cost of ownership. Full terms -- including what happens if
+        payments are not made -- are set out in the written agreement. See
+        <a href="/how-it-works">How It Works</a>.
+      </p>
       <p class="specs">
         {detail(beds, ' bed')} &middot; {detail(baths, ' bath')} &middot; {detail(sqft, ' sqft')}
       </p>
-    </div>
-
-    <!--
-      Zero-photo placeholder frame. `photos` defaults to an empty array
-      (UI-SPEC E3 empty-state row: a designed branded placeholder, not a
-      missing state) -- the dual-leaf mark renders at reduced opacity in ink
-      on cream, decorative (aria-hidden) since the surrounding frame carries
-      its own accessible label.
-    -->
-    <div class="gallery-region">
-      {photos.length === 0 && (
-        <div class="gallery-placeholder" role="img" aria-label="No photos available yet">
-          <BrandMark variant="ink" size="lg" class="placeholder-mark" />
-          <p>Photos coming soon</p>
-        </div>
-      )}
     </div>
 
     <div class="property-description">
@@ -102,6 +100,14 @@ const detail = (n: number | undefined, unit: string) => (n === undefined ? 'Call
         {features.map((feature) => <li>{feature}</li>)}
       </ul>
     )}
+
+    <div class="property-cta">
+      {canInquire ? (
+        <Button href={`/contact?property=${entry.id}`}>Inquire About This Home</Button>
+      ) : (
+        <Button href="/homes">See Available Homes</Button>
+      )}
+    </div>
   </article>
 </Layout>
 
@@ -112,7 +118,7 @@ const detail = (n: number | undefined, unit: string) => (n === undefined ? 'Call
     padding: 32px 24px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 24px;
   }
 
   .property-header {
@@ -122,28 +128,10 @@ const detail = (n: number | undefined, unit: string) => (n === undefined ? 'Call
     flex-wrap: wrap;
   }
 
-  .status-badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 8px;
-    font-size: 14px;
-    font-weight: 600;
-    border-radius: 4px;
-  }
-
-  .status-available {
-    background-color: var(--color-accent);
-    color: var(--color-ink);
-  }
-
-  .status-pending {
-    background-color: var(--color-pending);
-    color: var(--color-ink);
-  }
-
-  .status-sold {
-    background-color: var(--color-ink);
-    color: var(--color-cream);
+  .property-terms {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .price {
@@ -151,37 +139,36 @@ const detail = (n: number | undefined, unit: string) => (n === undefined ? 'Call
     font-size: 24px;
     font-weight: 600;
     color: var(--color-price-gold);
+    margin: 0;
   }
 
   .price-figure {
     color: var(--color-price-gold);
   }
 
+  .terms-note {
+    font-size: 14px;
+    font-weight: 400;
+    margin: 0;
+    max-width: 60ch;
+  }
+
   .specs {
     font-size: 14px;
     font-weight: 600;
+    margin: 0;
   }
 
-  .gallery-placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-height: 240px;
-    background-color: var(--color-cream-deep);
-    color: var(--color-ink);
-    font-size: 14px;
-  }
-
-  /* :global -- .placeholder-mark lands on BrandMark.astro's own <picture>
-     element, which carries that child component's scope hash rather than
-     this file's. An unscoped selector here would never match it. */
-  :global(.placeholder-mark) {
-    opacity: 0.15;
+  .property-description p {
+    margin: 0;
   }
 
   .features {
     padding-left: 20px;
+    margin: 0;
+  }
+
+  .property-cta {
+    margin-top: 8px;
   }
 </style>

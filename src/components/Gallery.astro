@@ -1,0 +1,221 @@
+---
+// src/components/Gallery.astro
+//
+// Cover photo plus thumbnail strip, wired to the gallery-lightbox.ts island.
+// The cover is `photos[0]` -- PROP-01 -- rendered as the sole large image;
+// the thumbnail strip renders the remaining entries, so the total <img>
+// count on a property page equals its photo count exactly (no photo is
+// rendered twice as both a big cover and its own thumbnail). Every image
+// carries explicit width/height (no layout shift) and native lazy loading
+// below the fold. When `photos` is empty, a single branded placeholder frame
+// renders instead of a broken layout -- cream background, the dual-leaf mark
+// at reduced opacity via BrandMark.astro (UI-SPEC empty/E3).
+//
+// There is no UI-framework integration installed in this project (SKELETON.md:
+// zero-JS-by-default, two hand-rolled islands only), so Astro's client:*
+// hydration directives -- which apply only to framework-component islands --
+// are not literally available for a plain <script>. The same "wait until
+// scrolled into view" behaviour they describe is reproduced by hand inside
+// gallery-lightbox.ts via an IntersectionObserver, and the `data-hydrate`
+// attribute below documents that intent as a literal marker in built HTML.
+import BrandMark from './BrandMark.astro';
+
+interface Props {
+  photos: string[];
+  address: string;
+}
+
+const { photos, address } = Astro.props;
+const [cover, ...thumbnails] = photos;
+---
+
+{cover ? (
+  <div class="gallery" data-gallery data-hydrate="client:visible">
+    <button
+      type="button"
+      class="gallery-cover"
+      data-gallery-trigger
+      data-index="0"
+      aria-label={`Open photo 1 of ${photos.length} in full screen`}
+    >
+      <img src={cover} width="800" height="600" alt="Photo 1" loading="eager" decoding="async" />
+    </button>
+
+    {thumbnails.length > 0 && (
+      <div class="gallery-thumbs" role="list">
+        {thumbnails.map((photo, i) => (
+          <button
+            type="button"
+            class="gallery-thumb"
+            data-gallery-trigger
+            data-index={i + 1}
+            aria-label={`Open photo ${i + 2} of ${photos.length} in full screen`}
+          >
+            <img
+              src={photo}
+              width="150"
+              height="112"
+              alt={`Photo ${i + 2}`}
+              loading="lazy"
+              decoding="async"
+            />
+          </button>
+        ))}
+      </div>
+    )}
+
+    <div class="lightbox" data-lightbox hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label={`${address} photos`}>
+      <button type="button" class="lightbox-close" data-lightbox-close aria-label="Close photo viewer">
+        &times;
+      </button>
+      <button type="button" class="lightbox-prev" data-lightbox-prev aria-label="Previous photo">
+        &lsaquo;
+      </button>
+      <img class="lightbox-image" data-lightbox-image src="" width="1200" height="900" alt="Property photo" />
+      <button type="button" class="lightbox-next" data-lightbox-next aria-label="Next photo">
+        &rsaquo;
+      </button>
+    </div>
+  </div>
+) : (
+  <div class="gallery-placeholder" role="img" aria-label="No photos available yet">
+    <BrandMark variant="ink" size="lg" class="placeholder-mark" />
+    <p>Photos coming soon</p>
+  </div>
+)}
+
+<script src="./gallery-lightbox.ts"></script>
+
+<style>
+  .gallery {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .gallery-cover {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border-radius: 8px;
+  }
+
+  .gallery-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .gallery-thumbs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .gallery-thumb {
+    padding: 0;
+    border: 2px solid transparent;
+    background: none;
+    cursor: pointer;
+    width: 150px;
+    height: 112px;
+    flex: 0 0 auto;
+    overflow: hidden;
+    border-radius: 4px;
+  }
+
+  .gallery-thumb:focus-visible,
+  .gallery-cover:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+
+  .gallery-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background-color: rgba(26, 26, 26, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .lightbox[hidden] {
+    display: none;
+  }
+
+  .lightbox-image {
+    max-width: min(92vw, 1200px);
+    max-height: 88vh;
+    object-fit: contain;
+  }
+
+  .lightbox-close,
+  .lightbox-prev,
+  .lightbox-next {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px;
+    border: 0;
+    border-radius: 4px;
+    background-color: var(--color-cream);
+    color: var(--color-ink);
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .lightbox-close {
+    top: 16px;
+    right: 16px;
+  }
+
+  .lightbox-prev {
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .lightbox-next {
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .gallery-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 240px;
+    background-color: var(--color-cream-deep);
+    color: var(--color-ink);
+    font-size: 14px;
+    border-radius: 8px;
+  }
+
+  /* :global -- .placeholder-mark lands on BrandMark.astro's own <picture>
+     element, which carries that child component's scope hash rather than
+     this file's. An unscoped selector here would never match it. */
+  :global(.placeholder-mark) {
+    opacity: 0.15;
+  }
+</style>
