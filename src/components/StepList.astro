@@ -1,0 +1,81 @@
+---
+// src/components/StepList.astro
+//
+// Reusable numbered-step list. The homepage's condensed 3-step overview and
+// How It Works' full 4-step process both render through this component so
+// the visual language (circled number + heading + body) stays identical
+// between the short and long versions of the same process, rather than
+// inventing a second vocabulary for the same thing (01-04-PLAN.md Task 1).
+interface Step {
+  title: string;
+  body: string;
+}
+
+interface Props {
+  steps: Step[];
+}
+
+const { steps } = Astro.props;
+---
+
+<ol class="step-list">
+  {steps.map((step, i) => (
+    <li class="step">
+      <span class="step-number" aria-hidden="true">{i + 1}</span>
+      <div class="step-copy">
+        <h3>{step.title}</h3>
+        <p>{step.body}</p>
+      </div>
+    </li>
+  ))}
+</ol>
+
+<style>
+  .step-list {
+    display: grid;
+    gap: 16px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .step {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+    background-color: var(--color-cream-deep);
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .step-number {
+    flex: none;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background-color: var(--color-accent);
+    color: var(--color-ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 18px;
+  }
+
+  .step-copy h3 {
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.2;
+    margin: 0 0 4px;
+  }
+
+  .step-copy p {
+    font-family: var(--font-body);
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1.5;
+    margin: 0;
+  }
+</style>
