@@ -1,0 +1,63 @@
+---
+// src/components/BrandMark.astro
+//
+// The single place in this project that names a brand image path, with one
+// documented exemption: the favicon <link> tags in Layout.astro's head,
+// which this component structurally cannot emit because it renders an <img>
+// in the body (01-UI-SPEC.md "### Brand Mark / Logo"; 01-02-PLAN.md Task 4).
+// Every consumer -- header, footer, the zero-photo placeholder frame, and
+// any future usage -- asks for a variant by name instead of hardcoding a
+// path under /brand/.
+//
+// Assets are exported by scripts/build-brand-assets.mjs from the owner's
+// source logo files in docs/reference/logo-source/. Each variant is the
+// circle-and-leaf mark only -- the "Oak Homes" / "FROM RENT TO ROOTS"
+// wordmark is deliberately NOT baked into the raster (see that script's
+// MARK_BOX comment). That is why the header instance below carries the
+// tagline as `alt` text rather than relying on the image to show it: the
+// UI-SPEC forbids re-typesetting the wordmark in a site UI font, and alt
+// text is a name, not typesetting.
+export interface Props {
+  /** Ink mark on cream (header/default), light mark on ink (footer/dark
+   * surfaces), or the colour mark in the yellow circle (avatars, OG images,
+   * and the source for the placeholder frame's reduced-opacity treatment). */
+  variant: 'ink' | 'light' | 'circle';
+  /** sm = header/footer display size. lg = the zero-photo placeholder frame. */
+  size?: 'sm' | 'lg';
+  /**
+   * Accessible name. Omit for a purely decorative mark placed beside a text
+   * logotype or as an ambient background element -- the image then renders
+   * with an empty alt and aria-hidden="true" so a screen reader does not
+   * announce the brand redundantly. The header mark is the one instance
+   * that is NOT decorative: it IS the site's logotype, so it must always be
+   * given the tagline as its alt text by the caller.
+   */
+  alt?: string;
+  class?: string;
+}
+
+const { variant, size = 'sm', alt, class: className } = Astro.props;
+
+const DISPLAY_PX: Record<'sm' | 'lg', number> = { sm: 40, lg: 128 };
+const px = DISPLAY_PX[size];
+const px2x = px * 2;
+
+const base1x = `/brand/mark-${variant}-${px}`;
+const base2x = `/brand/mark-${variant}-${px2x}`;
+
+const isDecorative = !alt;
+---
+
+<picture class={className}>
+  <source type="image/webp" srcset={`${base1x}.webp 1x, ${base2x}.webp 2x`} />
+  <img
+    src={`${base1x}.png`}
+    srcset={`${base1x}.png 1x, ${base2x}.png 2x`}
+    width={px}
+    height={px}
+    alt={isDecorative ? '' : alt}
+    aria-hidden={isDecorative ? 'true' : undefined}
+    loading="eager"
+    decoding="async"
+  />
+</picture>
