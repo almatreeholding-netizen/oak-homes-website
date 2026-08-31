@@ -11,12 +11,12 @@
 //
 // Assets are exported by scripts/build-brand-assets.mjs from the owner's
 // source logo files in docs/reference/logo-source/. Each variant is the
-// circle-and-leaf mark only -- the "Oak Homes" / "FROM RENT TO ROOTS"
-// wordmark is deliberately NOT baked into the raster (see that script's
-// MARK_BOX comment). That is why the header instance below carries the
-// tagline as `alt` text rather than relying on the image to show it: the
-// UI-SPEC forbids re-typesetting the wordmark in a site UI font, and alt
-// text is a name, not typesetting.
+// circle-and-leaf mark only -- the full wordmark lockup (name + tagline) is
+// deliberately NOT baked into the raster (see that script's MARK_BOX
+// comment). That is why the header instance below carries the tagline as
+// `alt` text rather than relying on the image to show it: the UI-SPEC
+// forbids re-typesetting the wordmark in a site UI font, and alt text is a
+// name, not typesetting.
 export interface Props {
   /** Ink mark on cream (header/default), light mark on ink (footer/dark
    * surfaces), or the colour mark in the yellow circle (avatars, OG images,

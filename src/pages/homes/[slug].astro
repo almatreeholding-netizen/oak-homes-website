@@ -11,6 +11,7 @@
 // apart.
 import { getCollection, type CollectionEntry } from 'astro:content';
 import Layout from '../../layouts/Layout.astro';
+import BrandMark from '../../components/BrandMark.astro';
 
 export async function getStaticPaths() {
   const properties = await getCollection('properties');
@@ -79,13 +80,14 @@ const detail = (n: number | undefined, unit: string) => (n === undefined ? 'Call
     <!--
       Zero-photo placeholder frame. `photos` defaults to an empty array
       (UI-SPEC E3 empty-state row: a designed branded placeholder, not a
-      missing state). This task ships the frame only; plan 01-02 Task 4
-      fills it with the dual-leaf mark at reduced opacity once BrandMark.astro
-      exists.
+      missing state) -- the dual-leaf mark renders at reduced opacity in ink
+      on cream, decorative (aria-hidden) since the surrounding frame carries
+      its own accessible label.
     -->
     <div class="gallery-region">
       {photos.length === 0 && (
         <div class="gallery-placeholder" role="img" aria-label="No photos available yet">
+          <BrandMark variant="ink" size="lg" class="placeholder-mark" />
           <p>Photos coming soon</p>
         </div>
       )}
@@ -162,12 +164,21 @@ const detail = (n: number | undefined, unit: string) => (n === undefined ? 'Call
 
   .gallery-placeholder {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 8px;
     min-height: 240px;
     background-color: var(--color-cream-deep);
     color: var(--color-ink);
     font-size: 14px;
+  }
+
+  /* :global -- .placeholder-mark lands on BrandMark.astro's own <picture>
+     element, which carries that child component's scope hash rather than
+     this file's. An unscoped selector here would never match it. */
+  :global(.placeholder-mark) {
+    opacity: 0.15;
   }
 
   .features {
