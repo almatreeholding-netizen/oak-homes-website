@@ -14,3 +14,6 @@ dist/
 # before the fallback scaffold ever runs, so a failed cleanup cannot sweep
 # it into the first site commit.
 .astro-scaffold-tmp/
+
+# GSD runtime sentinels (machine-local dispatch state, not project source)
+.gsd/
