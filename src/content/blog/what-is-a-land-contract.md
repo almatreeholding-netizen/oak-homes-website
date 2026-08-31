@@ -11,7 +11,8 @@ actually means. Here's a plain-language answer.
 
 ## The short version
 
-A land contract -- also called an agreement for deed -- is a way to buy a home directly from
+A land contract -- sometimes known by another legal name too, which [How It
+Works](/how-it-works) spells out -- is a way to buy a home directly from
 the seller, with the terms written into a contract instead of a bank mortgage. You take
 possession of the home and make monthly payments under that written agreement. You live in the
 home while you make your payments, and once the contract is completed as agreed, the deed and

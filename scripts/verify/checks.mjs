@@ -163,6 +163,55 @@ function withPhotosField(content, literalValue, checkId) {
   return content.slice(0, startIdx) + `photos: ${literalValue}\n` + content.slice(endIdx);
 }
 
+/**
+ * Decode HTML entities: the five named entities Astro's runtime escaper
+ * actually produces (&amp; &lt; &gt; &quot; &#39;), &nbsp;, and any other
+ * named/numeric/hex character reference. Used by the 01-04 content-pages
+ * verbatim-transcription comparison -- Astro escapes '&' to '&amp;' on any
+ * text that passes through a JS expression (e.g. {step.title}), while
+ * literal template text and the canonical source file both carry a bare
+ * '&', so a byte comparison without this step reports a false mismatch on
+ * a correct page (T-01-19).
+ */
+function decodeHtmlEntities(text) {
+  const named = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+  return text.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);/g, (match, ref) => {
+    if (ref[0] === '#') {
+      const isHex = ref[1] === 'x' || ref[1] === 'X';
+      const codePoint = isHex ? parseInt(ref.slice(2), 16) : parseInt(ref.slice(1), 10);
+      if (Number.isNaN(codePoint)) return match;
+      return String.fromCodePoint(codePoint);
+    }
+    return Object.prototype.hasOwnProperty.call(named, ref) ? named[ref] : match;
+  });
+}
+
+/**
+ * Strip HTML tags from a fragment. Simple tag-boundary strip -- fragments
+ * passed in here are already isolated to a single element's inner content
+ * (e.g. one <p>...</p>), so this only needs to remove nested inline tags
+ * like <strong>, not parse a whole document.
+ */
+function stripHtmlTags(html) {
+  return html.replace(/<[^>]*>/g, '');
+}
+
+/**
+ * The full normalisation pipeline required by 01-04-PLAN.md Task 2's
+ * acceptance criteria, applied identically to both the canonical source
+ * file's paragraph and the built page's paragraph before comparison: strip
+ * HTML tags, decode HTML entities, normalise Unicode to NFC (the copy
+ * contains em dashes and can arrive in composed or decomposed form),
+ * collapse every run of whitespace (including decoded &nbsp; -- JS `\s`
+ * already matches U+00A0) to a single space, then trim.
+ */
+function normalizeForComparison(fragment) {
+  return decodeHtmlEntities(stripHtmlTags(fragment))
+    .normalize('NFC')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // ---------------------------------------------------------------------------
 // Checks
 // ---------------------------------------------------------------------------
@@ -1968,6 +2017,636 @@ const checks = {
     }
 
     // -- 9. Final rebuild -- leave the tree in a known-good built state -------
+
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `final rebuild after all mutation round-trips exited ${build.status}, expected 0`);
+    }
+
+    pass(id);
+  },
+
+  /**
+   * 01-04 Task 1: the homepage -- settings-driven intro, exactly three
+   * overview steps, and featured available homes with the D-07 never-empty
+   * fallback. Same restore-before-fail discipline as the other content
+   * checks in this file: every mutation is reverted immediately after the
+   * build that consumes it, before any assertion that could call fail().
+   */
+  homepage: (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const distIndexPath = join(toplevel, 'dist', 'index.html');
+    const propertiesDir = join(toplevel, 'src', 'content', 'properties');
+    const marengoFile = join(propertiesDir, '614-e-marengo-st.md');
+    const brownFile = join(propertiesDir, '2734-brown-st.md');
+    const settingsPath = join(toplevel, 'src', 'content', 'settings.json');
+
+    const equalHousingSentence =
+      'Equal Housing Opportunity. Owner financing is subject to a written agreement; this is not a commitment to lend or an offer of credit.';
+
+    const originalMarengo = readUtf8File(marengoFile);
+    const originalBrown = readUtf8File(brownFile);
+    const originalSettings = readUtf8File(settingsPath);
+
+    function assertNonEmptyAlts(html, label) {
+      const contentWithoutComments = html.replace(/<!--[^]*?-->/g, '');
+      const imgTagRegex = /<img\b[^>]*>/g;
+      let imgMatch;
+      while ((imgMatch = imgTagRegex.exec(contentWithoutComments)) !== null) {
+        const tag = imgMatch[0];
+        const altMatch = tag.match(/\balt="([^"]*)"/);
+        const hasBareAlt = /\balt(?=[\s>])/.test(tag) && !altMatch;
+        const hasNonEmptyAlt = altMatch && altMatch[1].length > 0;
+        const hasAriaHiddenTrue = tag.includes('aria-hidden="true"');
+        if (!hasNonEmptyAlt && !(hasBareAlt && hasAriaHiddenTrue) && !(altMatch && altMatch[1] === '' && hasAriaHiddenTrue)) {
+          fail(id, `${label} has an <img> with neither a non-empty alt nor an empty-alt+aria-hidden="true" pairing: ${tag}`);
+        }
+      }
+    }
+
+    // -- 1. Baseline build ---------------------------------------------------
+
+    clearAstroCache(toplevel);
+    let build = runBuild(toplevel);
+    if (build.timedOut) {
+      fail(id, `baseline npm run build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `baseline npm run build exited ${build.status}:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+    }
+    if (!existsSync(distIndexPath)) {
+      fail(id, `missing ${distIndexPath} after a successful baseline build`);
+    }
+
+    let html = readUtf8File(distIndexPath);
+
+    // -- 2. homepageIntro is settings-driven, not hardcoded ------------------
+
+    const settingsData = JSON.parse(originalSettings);
+    const currentIntro = settingsData.main.homepageIntro;
+    // {homepageIntro} is a JS expression, so Astro's escaper HTML-entity-encodes
+    // it on output (e.g. the intro's apostrophe becomes &#39;) -- decode before
+    // comparing, or a correct page reports a false mismatch.
+    if (!decodeHtmlEntities(html).includes(currentIntro)) {
+      fail(id, `${distIndexPath} does not contain the current homepageIntro value from settings.json`);
+    }
+
+    const marker = 'OAK-HOMEPAGE-INTRO-CHECK-MARKER';
+    writeFileSync(settingsPath, originalSettings.replace(currentIntro, marker), 'utf8');
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    const markerHtml = existsSync(distIndexPath) ? readUtf8File(distIndexPath) : '';
+    writeFileSync(settingsPath, originalSettings, 'utf8');
+    if (build.timedOut) {
+      fail(id, `homepageIntro-marker build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `homepageIntro-marker build exited ${build.status}, expected 0`);
+    }
+    if (!markerHtml.includes(marker)) {
+      fail(id, `${distIndexPath} did not pick up a changed homepageIntro value -- the hero text is not settings-driven`);
+    }
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `rebuild after reverting the homepageIntro marker exited ${build.status}, expected 0`);
+    }
+    html = readUtf8File(distIndexPath);
+
+    // -- 3. Browse Homes CTA --------------------------------------------------
+
+    if (!/<a[^>]*href="\/homes"[^>]*>\s*Browse Homes\s*</.test(html)) {
+      fail(id, `${distIndexPath} does not contain a 'Browse Homes' call to action with href="/homes"`);
+    }
+
+    // -- 4. Exactly three overview steps --------------------------------------
+
+    const stepCount = countOccurrences(html, 'class="step"');
+    if (stepCount !== 3) {
+      fail(id, `${distIndexPath} contains ${stepCount} occurrences of class="step", expected exactly 3`);
+    }
+
+    // -- 5. Featured section: current flags show Marengo, not Brown Street ---
+
+    if (!html.includes('614 E Marengo St')) {
+      fail(id, `${distIndexPath} does not contain '614 E Marengo St' in the featured section`);
+    }
+    if (html.includes('2734 Brown Street')) {
+      fail(id, `${distIndexPath} contains '2734 Brown Street' -- it is not featured and no fallback should be active with Marengo featured`);
+    }
+
+    // -- 6. Layout invariants + alt text --------------------------------------
+
+    if (countOccurrences(html, equalHousingSentence) !== 1) {
+      fail(id, `${distIndexPath} does not contain exactly 1 occurrence of the Equal Housing sentence`);
+    }
+    if (!html.includes('(217) 269-0003')) {
+      fail(id, `${distIndexPath} does not contain the header phone number`);
+    }
+    assertNonEmptyAlts(html, distIndexPath);
+
+    // -- 7. D-07 fallback: clear Marengo's featured flag ----------------------
+
+    writeFileSync(marengoFile, originalMarengo.replace('featured: true', 'featured: false'), 'utf8');
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    const fallbackHtml = existsSync(distIndexPath) ? readUtf8File(distIndexPath) : '';
+    writeFileSync(marengoFile, originalMarengo, 'utf8');
+    if (build.timedOut) {
+      fail(id, `no-featured-flag build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `no-featured-flag build exited ${build.status}, expected 0`);
+    }
+    const fallbackCardCount = countOccurrences(fallbackHtml, 'data-property-slug');
+    if (fallbackCardCount < 1) {
+      fail(id, `no-featured-flag build's homepage renders 0 property cards -- the D-07 fallback did not activate`);
+    }
+
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `rebuild after reverting the featured-flag mutation exited ${build.status}, expected 0`);
+    }
+    const revertedHtml = readUtf8File(distIndexPath);
+    if (!revertedHtml.includes('614 E Marengo St') || revertedHtml.includes('2734 Brown Street')) {
+      fail(id, `after reverting the featured-flag mutation, the homepage does not show the original single-featured-card state`);
+    }
+
+    // -- 8. Fallback excludes unavailable homes -------------------------------
+
+    writeFileSync(marengoFile, originalMarengo.replace('featured: true', 'featured: false'), 'utf8');
+    writeFileSync(brownFile, originalBrown.replace('status: "Available"', 'status: "Sold"'), 'utf8');
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    const excludeHtml = existsSync(distIndexPath) ? readUtf8File(distIndexPath) : '';
+    writeFileSync(marengoFile, originalMarengo, 'utf8');
+    writeFileSync(brownFile, originalBrown, 'utf8');
+    if (build.timedOut) {
+      fail(id, `unavailable-fallback build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `unavailable-fallback build exited ${build.status}, expected 0`);
+    }
+    if (!excludeHtml.includes('614 E Marengo St')) {
+      fail(id, `unavailable-fallback build's homepage does not show the remaining Available home`);
+    }
+    if (excludeHtml.includes('2734 Brown Street')) {
+      fail(id, `unavailable-fallback build's homepage shows the Sold home -- the fallback must exclude unavailable homes`);
+    }
+
+    // -- 9. Final rebuild -- leave the tree in a known-good built state -------
+
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `final rebuild after all mutation round-trips exited ${build.status}, expected 0`);
+    }
+
+    pass(id);
+  },
+
+  /**
+   * 01-04 Task 2: How It Works (verbatim land-contract copy + FAQ), About,
+   * Schedule, and the Contact shell. Carries the plan's single
+   * highest-consequence assertion -- the bidirectional, normalisation-pipeline
+   * transcription comparison (T-01-19) -- alongside the retired-phrasing
+   * sweep (T-01-20) and the CMS-unreachability assertion (T-01-21).
+   */
+  'content-pages': (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const onePagerPath = join(toplevel, 'docs', 'reference', 'Oak-Homes-How-It-Works.html');
+    const howItWorksSrcPath = join(toplevel, 'src', 'pages', 'how-it-works.astro');
+    const contactSrcPath = join(toplevel, 'src', 'pages', 'contact.astro');
+    const distDir = join(toplevel, 'dist');
+    const distHowItWorks = join(distDir, 'how-it-works', 'index.html');
+    const distAbout = join(distDir, 'about', 'index.html');
+    const distSchedule = join(distDir, 'schedule', 'index.html');
+    const distContact = join(distDir, 'contact', 'index.html');
+    const contentDir = join(toplevel, 'src', 'content');
+
+    const equalHousingSentence =
+      'Equal Housing Opportunity. Owner financing is subject to a written agreement; this is not a commitment to lend or an offer of credit.';
+    const closingSentence =
+      "The full terms — including what happens if payments aren't made — are set out in the written agreement.";
+
+    const originalHowItWorksSrc = readUtf8File(howItWorksSrcPath);
+    const onePagerHtml = readUtf8File(onePagerPath);
+
+    function extractSourceLandContractParagraph(html) {
+      const marker = 'What a land contract means';
+      const headingIdx = html.indexOf(marker);
+      if (headingIdx === -1) return null;
+      const pStart = html.indexOf('<p>', headingIdx);
+      const pEnd = html.indexOf('</p>', pStart);
+      if (pStart === -1 || pEnd === -1) return null;
+      return html.slice(pStart + '<p>'.length, pEnd);
+    }
+
+    function extractBuiltLandContractParagraph(html) {
+      const re = /<p[^>]*data-copy="land-contract-meaning"[^>]*>([^]*?)<\/p>/;
+      const m = html.match(re);
+      return m ? m[1] : null;
+    }
+
+    // -- 1. Baseline build -----------------------------------------------------
+
+    clearAstroCache(toplevel);
+    let build = runBuild(toplevel);
+    if (build.timedOut) {
+      fail(id, `baseline npm run build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `baseline npm run build exited ${build.status}:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+    }
+    for (const p of [distHowItWorks, distAbout, distSchedule, distContact]) {
+      if (!existsSync(p)) {
+        fail(id, `missing ${p} after a successful baseline build`);
+      }
+    }
+
+    const howItWorksHtml = readUtf8File(distHowItWorks);
+    const decodedHowItWorksHtml = decodeHtmlEntities(howItWorksHtml);
+
+    // -- 2. Closing sentence + 'agreement for deed' -----------------------------
+
+    if (!howItWorksHtml.includes(closingSentence)) {
+      fail(id, `${distHowItWorks} does not contain the exact closing sentence about full terms / missed payments`);
+    }
+    if (!howItWorksHtml.includes('agreement for deed')) {
+      fail(id, `${distHowItWorks} does not contain the phrase 'agreement for deed'`);
+    }
+
+    // -- 3. All four step headings + all three what-you'll-need items ----------
+
+    for (const heading of ["Find a home & reach out", "Let's talk", 'Agree on terms', 'Move in and settle in']) {
+      if (!decodedHowItWorksHtml.includes(heading)) {
+        fail(id, `${distHowItWorks} (entity-decoded) does not contain the step heading '${heading}'`);
+      }
+    }
+    for (const item of ['A down payment', 'Steady income', 'A commitment to long-term ownership']) {
+      if (!decodedHowItWorksHtml.includes(item)) {
+        fail(id, `${distHowItWorks} does not contain the what-you'll-need item '${item}'`);
+      }
+    }
+
+    // -- 4. Mechanical, bidirectional transcription-fidelity comparison --------
+
+    const sourceParagraph = extractSourceLandContractParagraph(onePagerHtml);
+    if (!sourceParagraph) {
+      fail(id, `could not extract the 'What a land contract means' paragraph from ${onePagerPath}`);
+    }
+    const builtParagraph = extractBuiltLandContractParagraph(howItWorksHtml);
+    if (!builtParagraph) {
+      fail(id, `could not extract the land-contract-meaning paragraph from ${distHowItWorks} (missing data-copy="land-contract-meaning" marker?)`);
+    }
+    const normalizedSource = normalizeForComparison(sourceParagraph);
+    const normalizedBuilt = normalizeForComparison(builtParagraph);
+    if (normalizedSource !== normalizedBuilt) {
+      fail(
+        id,
+        `land-contract paragraph mismatch after normalisation.\nSOURCE: ${JSON.stringify(normalizedSource)}\nBUILT:  ${JSON.stringify(normalizedBuilt)}`,
+      );
+    }
+
+    // Bidirectional proof: a deliberate one-word edit must make the
+    // comparison fail, so a passing comparison has actually been shown to
+    // compare something, not merely to always pass.
+    const mutatedHowItWorksSrc = originalHowItWorksSrc.replace(
+      'you take possession of the home and make',
+      'you take possession of the residence and make',
+    );
+    if (mutatedHowItWorksSrc === originalHowItWorksSrc) {
+      fail(id, `bidirectional-proof mutation did not change ${howItWorksSrcPath} -- the target phrase was not found`);
+    }
+    writeFileSync(howItWorksSrcPath, mutatedHowItWorksSrc, 'utf8');
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    const mutatedHtml = existsSync(distHowItWorks) ? readUtf8File(distHowItWorks) : '';
+    writeFileSync(howItWorksSrcPath, originalHowItWorksSrc, 'utf8');
+    if (build.timedOut) {
+      fail(id, `bidirectional-proof build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `bidirectional-proof build exited ${build.status}, expected 0 (the page must still build with a wrong word, just fail the comparison)`);
+    }
+    const mutatedBuiltParagraph = extractBuiltLandContractParagraph(mutatedHtml);
+    const normalizedMutated = mutatedBuiltParagraph ? normalizeForComparison(mutatedBuiltParagraph) : null;
+    if (normalizedMutated === normalizedSource) {
+      fail(id, `bidirectional proof failed: a one-word edit to the transcribed paragraph did NOT change the normalised comparison result -- the comparison is not actually comparing the paragraph text`);
+    }
+
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `rebuild after reverting the bidirectional-proof mutation exited ${build.status}, expected 0`);
+    }
+    if (readUtf8File(howItWorksSrcPath) !== originalHowItWorksSrc) {
+      fail(id, `${howItWorksSrcPath} did not revert to its original content after the bidirectional proof`);
+    }
+
+    // -- 5. Retired-phrasing sweep over the whole built site --------------------
+
+    const htmlFiles = walkFiles(distDir).filter((p) => p.endsWith('.html'));
+    for (const literal of ['equitable interest', 'honest terms', 'not a rental']) {
+      for (const f of htmlFiles) {
+        const lower = readUtf8File(f).toLowerCase();
+        if (lower.includes(literal)) {
+          fail(id, `${f} contains the retired phrasing '${literal}' (case-insensitive)`);
+        }
+      }
+    }
+
+    // -- 6. Legal copy is not CMS-reachable --------------------------------------
+
+    const contentFiles = walkFiles(contentDir);
+    for (const f of contentFiles) {
+      let text;
+      try {
+        text = readUtf8File(f);
+      } catch {
+        continue;
+      }
+      if (text.includes('agreement for deed')) {
+        fail(id, `${f} under src/content/ contains 'agreement for deed' -- legal copy must exist only in .astro files (DESIGN-03)`);
+      }
+    }
+
+    // -- 7. FAQ: at least 3 questions, deed + missed-payment answers ------------
+
+    if (!howItWorksHtml.includes('Frequently asked questions')) {
+      fail(id, `${distHowItWorks} does not contain a 'Frequently asked questions' heading`);
+    }
+    const faqQuestionCount = countOccurrences(howItWorksHtml, '<dt');
+    if (faqQuestionCount < 3) {
+      fail(id, `${distHowItWorks} contains ${faqQuestionCount} FAQ questions (<dt> elements), expected at least 3`);
+    }
+    if (!decodedHowItWorksHtml.includes('Do I get the deed?')) {
+      fail(id, `${distHowItWorks} does not contain the deed FAQ question`);
+    }
+    if (!decodedHowItWorksHtml.includes('What happens if I miss a payment?')) {
+      fail(id, `${distHowItWorks} does not contain the missed-payment FAQ question`);
+    }
+    const writtenAgreementCount = countOccurrences(howItWorksHtml, 'written agreement');
+    if (writtenAgreementCount < 3) {
+      fail(id, `${distHowItWorks} contains ${writtenAgreementCount} occurrences of 'written agreement', expected at least 3 (the transcribed copy plus both FAQ answers)`);
+    }
+
+    // -- 8. Schedule page phone CTA ----------------------------------------------
+
+    const scheduleHtml = readUtf8File(distSchedule);
+    if (!scheduleHtml.includes('Call (217) 269-0003')) {
+      fail(id, `${distSchedule} does not contain 'Call (217) 269-0003'`);
+    }
+    if (!scheduleHtml.includes('tel:+12172690003')) {
+      fail(id, `${distSchedule} does not contain an href of 'tel:+12172690003'`);
+    }
+
+    // -- 9. Contact page: marked Zoho slot, no form, no external script ---------
+
+    const contactSrc = readUtf8File(contactSrcPath);
+    if (!contactSrc.includes('Zoho')) {
+      fail(id, `${contactSrcPath} does not contain 'Zoho' -- the Phase 3 embed slot must be marked`);
+    }
+    const contactHtml = readUtf8File(distContact);
+    if (/<form\b/i.test(contactHtml)) {
+      fail(id, `${distContact} contains a <form> element -- the Zoho embed is Phase 3, not this plan`);
+    }
+    if (/<script\s+[^>]*\bsrc=/i.test(contactHtml)) {
+      fail(id, `${distContact} contains an external <script src=...> tag -- the Zoho embed is Phase 3, not this plan`);
+    }
+
+    // -- 10. Every Inquire link's target resolves --------------------------------
+
+    const distHomesDir = join(distDir, 'homes');
+    const homesHtmlFiles = existsSync(distHomesDir) ? walkFiles(distHomesDir).filter((p) => p.endsWith('.html')) : [];
+    let inquireLinksFound = 0;
+    for (const f of homesHtmlFiles) {
+      const content = readUtf8File(f);
+      const re = /\/contact\?property=([a-z0-9-]+)/g;
+      let m;
+      while ((m = re.exec(content)) !== null) {
+        inquireLinksFound += 1;
+      }
+    }
+    if (inquireLinksFound === 0) {
+      fail(id, `no '/contact?property=' Inquire links were found under ${distHomesDir} -- expected at least one`);
+    }
+    if (!existsSync(distContact)) {
+      fail(id, `${distContact} does not exist -- every Inquire link target must resolve`);
+    }
+
+    // -- 11. All four pages render through the shared layout --------------------
+
+    for (const p of [distHowItWorks, distAbout, distSchedule, distContact]) {
+      const content = readUtf8File(p);
+      const count = countOccurrences(content, equalHousingSentence);
+      if (count !== 1) {
+        fail(id, `${p} contains ${count} occurrences of the Equal Housing sentence, expected exactly 1`);
+      }
+    }
+
+    pass(id);
+  },
+
+  /**
+   * 01-04 Task 3: the Learn index and the seeded land-contract-basics post.
+   * Same restore-before-fail discipline as the other content checks in this
+   * file.
+   */
+  'learn-section': (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const blogDir = join(toplevel, 'src', 'content', 'blog');
+    const blogFile = join(blogDir, 'what-is-a-land-contract.md');
+    const distLearnDir = join(toplevel, 'dist', 'learn');
+    const distLearnIndex = join(distLearnDir, 'index.html');
+    const distPost = join(distLearnDir, 'what-is-a-land-contract', 'index.html');
+
+    const equalHousingSentence =
+      'Equal Housing Opportunity. Owner financing is subject to a written agreement; this is not a commitment to lend or an offer of credit.';
+
+    const originalBlogFile = readUtf8File(blogFile);
+
+    function countGeneratedPostPages() {
+      if (!existsSync(distLearnDir)) return 0;
+      let count = 0;
+      for (const name of readdirSync(distLearnDir, { withFileTypes: true })) {
+        if (!name.isDirectory()) continue; // excludes dist/learn/index.html itself
+        const candidate = join(distLearnDir, name.name, 'index.html');
+        if (existsSync(candidate)) count += 1;
+      }
+      return count;
+    }
+
+    // -- 1. Baseline build ------------------------------------------------------
+
+    clearAstroCache(toplevel);
+    let build = runBuild(toplevel);
+    if (build.timedOut) {
+      fail(id, `baseline npm run build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `baseline npm run build exited ${build.status}:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+    }
+    if (!existsSync(distLearnIndex)) {
+      fail(id, `missing ${distLearnIndex} after a successful baseline build`);
+    }
+    if (!existsSync(distPost)) {
+      fail(id, `missing ${distPost} after a successful baseline build`);
+    }
+
+    const indexHtml = readUtf8File(distLearnIndex);
+    if (!indexHtml.includes('What Is a Land Contract?')) {
+      fail(id, `${distLearnIndex} does not list the seeded post's title`);
+    }
+    if (!/post-date/.test(indexHtml) || !/\d{4}/.test(indexHtml)) {
+      fail(id, `${distLearnIndex} does not show a date for the seeded post`);
+    }
+
+    // -- 2. Generated post-page count equals blog .md file count ---------------
+
+    const mdFileCount = readdirSync(blogDir).filter((f) => f.endsWith('.md')).length;
+    const generatedCount = countGeneratedPostPages();
+    if (generatedCount !== mdFileCount) {
+      fail(id, `dist/learn/*/index.html count is ${generatedCount}, expected ${mdFileCount} (one per src/content/blog/*.md file)`);
+    }
+
+    // -- 3. Post page: full prose, ownerReviewed banner, no truncation ----------
+
+    const postHtml = readUtf8File(distPost);
+    if (!postHtml.includes('Where to go from here')) {
+      fail(id, `${distPost} does not render the full body prose (missing the closing section heading)`);
+    }
+    if (/-webkit-line-clamp|text-overflow:\s*ellipsis/i.test(postHtml)) {
+      fail(id, `${distPost} applies line-clamp or ellipsis truncation CSS to the prose body -- no truncation is allowed`);
+    }
+    if (!/ownerReviewed:\s*false/.test(originalBlogFile)) {
+      fail(id, `${blogFile} frontmatter does not set ownerReviewed: false`);
+    }
+    const lowerPost = postHtml.toLowerCase();
+    if (!lowerPost.includes('general information') || !lowerPost.includes('not legal advice')) {
+      fail(id, `${distPost} does not carry a visible note that the article is general information and not legal advice`);
+    }
+
+    // -- 4. No-cover-image path renders cleanly ----------------------------------
+    //
+    // Match the <img class="post-cover" ...> element specifically, not the
+    // bare substring 'post-cover' -- the scoped <style> block always emits
+    // the '.post-cover' CSS selector regardless of whether any element uses
+    // it, so a substring search false-positives on every build.
+
+    const postCoverImgRe = /<img[^>]*\bclass="post-cover"[^>]*>/;
+    if (postCoverImgRe.test(postHtml)) {
+      fail(id, `${distPost} renders a post-cover image element for a post with no coverImage -- expected no image slot at all`);
+    }
+    if (postCoverImgRe.test(indexHtml)) {
+      fail(id, `${distLearnIndex} renders a post-cover image element for a post with no coverImage -- expected no image slot at all`);
+    }
+
+    // -- 5. With-cover-image path -------------------------------------------------
+
+    const withCover = originalBlogFile.replace(
+      'ownerReviewed: false',
+      'ownerReviewed: false\ncoverImage: "/brand/mark-circle-256.png"',
+    );
+    if (withCover === originalBlogFile) {
+      fail(id, `could not insert a coverImage field into ${blogFile} -- 'ownerReviewed: false' line not found`);
+    }
+    writeFileSync(blogFile, withCover, 'utf8');
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    const coverIndexHtml = existsSync(distLearnIndex) ? readUtf8File(distLearnIndex) : '';
+    const coverPostHtml = existsSync(distPost) ? readUtf8File(distPost) : '';
+    writeFileSync(blogFile, originalBlogFile, 'utf8');
+    if (build.timedOut) {
+      fail(id, `with-coverImage build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `with-coverImage build exited ${build.status}, expected 0`);
+    }
+    if (!/<img[^>]*class="post-cover"[^>]*src="\/brand\/mark-circle-256\.png"[^>]*alt="[^"]+"/.test(coverIndexHtml)) {
+      fail(id, `with-coverImage build's Learn index does not render the cover image with a non-empty alt`);
+    }
+    if (!/<img[^>]*class="post-cover"[^>]*src="\/brand\/mark-circle-256\.png"[^>]*alt="[^"]+"/.test(coverPostHtml)) {
+      fail(id, `with-coverImage build's post page does not render the cover image with a non-empty alt`);
+    }
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `rebuild after reverting the coverImage fixture exited ${build.status}, expected 0`);
+    }
+
+    // -- 6. Slug validation holds -------------------------------------------------
+
+    const invalidSlugContent = originalBlogFile.replace(
+      'slug: "what-is-a-land-contract"',
+      'slug: "What-Is-A-Land-Contract"',
+    );
+    if (invalidSlugContent === originalBlogFile) {
+      fail(id, `could not locate the slug field in ${blogFile} to mutate`);
+    }
+    writeFileSync(blogFile, invalidSlugContent, 'utf8');
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    writeFileSync(blogFile, originalBlogFile, 'utf8');
+    if (build.timedOut) {
+      fail(id, `invalid-slug build timed out`);
+    }
+    if (build.status === 0) {
+      fail(id, `invalid-slug build exited 0 -- the slug regex did not fire on an uppercase value`);
+    }
+
+    // -- 7. Both pages render through the shared layout --------------------------
+
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `post-revert rebuild exited ${build.status}, expected 0`);
+    }
+    for (const p of [distLearnIndex, distPost]) {
+      const content = readUtf8File(p);
+      const count = countOccurrences(content, equalHousingSentence);
+      if (count !== 1) {
+        fail(id, `${p} contains ${count} occurrences of the Equal Housing sentence, expected exactly 1`);
+      }
+    }
+
+    // -- 8. Retired-phrasing sweep scoped to dist/learn/ --------------------------
+
+    const learnHtmlFiles = walkFiles(distLearnDir).filter((p) => p.endsWith('.html'));
+    for (const literal of ['equitable interest', 'honest terms', 'not a rental']) {
+      for (const f of learnHtmlFiles) {
+        const lower = readUtf8File(f).toLowerCase();
+        if (lower.includes(literal)) {
+          fail(id, `${f} contains the retired phrasing '${literal}' (case-insensitive)`);
+        }
+      }
+    }
+
+    // -- 9. Filename stem equals frontmatter slug ---------------------------------
+
+    const slugMatch = originalBlogFile.match(/^slug:\s*"([^"]+)"/m);
+    if (!slugMatch || slugMatch[1] !== 'what-is-a-land-contract') {
+      fail(id, `${blogFile}'s frontmatter slug does not equal its filename stem 'what-is-a-land-contract'`);
+    }
+
+    // -- 10. Final rebuild -- leave the tree in a known-good built state --------
 
     clearAstroCache(toplevel);
     build = runBuild(toplevel);
