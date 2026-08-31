@@ -2656,6 +2656,500 @@ const checks = {
 
     pass(id);
   },
+
+  /**
+   * 01-05 Task 1: the whole-site WCAG 2.1 AA-basics sweep -- alt text,
+   * landmarks, heading structure, encoding survival, the accent-never-text
+   * rule, and status-as-text on the badges. This is the cross-cutting check
+   * that only becomes meaningful once all ten pages exist together; the
+   * per-plan checks above already prove their own page's content is
+   * correct, this proves the site-wide *shape* every page shares.
+   *
+   * Genuinely visual assertions this check cannot make headlessly --
+   * horizontal-scroll behaviour at 320/375/768/1280px, the 44px hit areas
+   * as measured in devtools, and an actual keyboard walk-through -- are
+   * NOT asserted here. They are the plan's <human-check> and are recorded
+   * as deferred verification in 01-05-SUMMARY.md instead of being silently
+   * skipped or falsely claimed as passing.
+   */
+  'a11y-sweep': (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const distDir = join(toplevel, 'dist');
+    const srcDir = join(toplevel, 'src');
+    const propertiesDir = join(toplevel, 'src', 'content', 'properties');
+    const marengoFile = join(propertiesDir, '614-e-marengo-st.md');
+    const brownFile = join(propertiesDir, '2734-brown-st.md');
+    const distHomesIndex = join(distDir, 'homes', 'index.html');
+    const distHowItWorks = join(distDir, 'how-it-works', 'index.html');
+    const onePagerPath = join(toplevel, 'docs', 'reference', 'Oak-Homes-How-It-Works.html');
+
+    const originalMarengo = readUtf8File(marengoFile);
+    const originalBrown = readUtf8File(brownFile);
+
+    function restoreAll() {
+      writeFileSync(marengoFile, originalMarengo, 'utf8');
+      writeFileSync(brownFile, originalBrown, 'utf8');
+    }
+
+    try {
+      // -- 1. Baseline build ---------------------------------------------
+
+      clearAstroCache(toplevel);
+      let build = runBuild(toplevel);
+      if (build.timedOut) {
+        fail(id, `baseline npm run build timed out`);
+      }
+      if (build.status !== 0) {
+        fail(id, `baseline npm run build exited ${build.status}:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+      }
+
+      const htmlFiles = walkFiles(distDir).filter((p) => p.endsWith('.html'));
+      if (htmlFiles.length !== 10) {
+        fail(id, `expected exactly 10 built .html files, found ${htmlFiles.length}: ${htmlFiles.join(', ')}`);
+      }
+
+      // -- 2. Per-page structural sweep: alt text, encoding, headings, -----
+      // --    landmarks, and the skip link -----------------------------------
+      //
+      // Astro renders an empty-string `alt` prop as a bare `alt` attribute
+      // (no `=`), not `alt=""` -- both are the same empty alt in HTML, and
+      // both are only correct when paired with aria-hidden="true"
+      // (BrandMark.astro's contract). A truly missing alt has neither form.
+      const IMG_TAG_RE = /<img\b[^>]*>/g;
+      const QUOTED_ALT_RE = /\balt="[^"]*"/;
+      const BARE_ALT_RE = /\balt(\s|\/?>)/;
+
+      for (const f of htmlFiles) {
+        const html = readUtf8File(f);
+
+        const imgTags = html.match(IMG_TAG_RE) || [];
+        for (const tag of imgTags) {
+          const hasQuotedAlt = QUOTED_ALT_RE.test(tag);
+          const hasBareAlt = BARE_ALT_RE.test(tag);
+          if (!hasQuotedAlt && !hasBareAlt) {
+            fail(id, `${f}: an <img> is missing an alt attribute entirely: ${tag}`);
+          }
+          const isEmptyAlt = /\balt=""/.test(tag) || (hasBareAlt && !hasQuotedAlt);
+          if (isEmptyAlt && !/aria-hidden="true"/.test(tag)) {
+            fail(id, `${f}: an <img> has an empty alt without aria-hidden="true": ${tag}`);
+          }
+        }
+
+        if (!/<html\s+lang="en"/.test(html)) {
+          fail(id, `${f} does not declare lang="en"`);
+        }
+        if (!/<meta\s+charset="utf-8"/.test(html)) {
+          fail(id, `${f} does not declare a utf-8 charset`);
+        }
+
+        const h1Count = (html.match(/<h1\b/g) || []).length;
+        if (h1Count !== 1) {
+          fail(id, `${f} has ${h1Count} <h1> elements, expected exactly 1`);
+        }
+
+        if (!/<main\b/.test(html)) fail(id, `${f} has no <main> landmark`);
+        if (!/<nav\b/.test(html)) fail(id, `${f} has no <nav> landmark`);
+        if (!/<footer\b/.test(html)) fail(id, `${f} has no <footer> landmark`);
+
+        if (!html.includes('id="main-content"')) {
+          fail(id, `${f}'s <main> is missing id="main-content", the skip link's target`);
+        }
+        if (!html.includes('class="skip-link"') || !html.includes('href="#main-content"')) {
+          fail(id, `${f} is missing a skip link (class="skip-link" href="#main-content") as the first focusable element`);
+        }
+
+        if (html.includes('�')) {
+          fail(id, `${f} contains the Unicode replacement character (U+FFFD) -- an encoding loss somewhere in the build`);
+        }
+      }
+
+      // -- 3. Encoding survived: em dash and straight apostrophe in the ----
+      // --    ported land-contract paragraph, transcribed exactly ----------
+
+      const onePagerHtml = readUtf8File(onePagerPath);
+      const headingIdx = onePagerHtml.indexOf('What a land contract means');
+      const pStart = onePagerHtml.indexOf('<p>', headingIdx);
+      const pEnd = onePagerHtml.indexOf('</p>', pStart);
+      if (headingIdx === -1 || pStart === -1 || pEnd === -1) {
+        fail(id, `could not extract the 'What a land contract means' paragraph from ${onePagerPath}`);
+      }
+      const sourceParagraph = onePagerHtml.slice(pStart + '<p>'.length, pEnd);
+
+      const howItWorksHtml = readUtf8File(distHowItWorks);
+      const builtMatch = howItWorksHtml.match(/<p[^>]*data-copy="land-contract-meaning"[^>]*>([^]*?)<\/p>/);
+      if (!builtMatch) {
+        fail(id, `could not extract the land-contract-meaning paragraph from ${distHowItWorks}`);
+      }
+      const builtParagraph = builtMatch[1];
+
+      const normalizedSource = normalizeForComparison(sourceParagraph);
+      const normalizedBuilt = normalizeForComparison(builtParagraph);
+      if (normalizedSource !== normalizedBuilt) {
+        fail(
+          id,
+          `land-contract paragraph mismatch after normalisation.\nSOURCE: ${JSON.stringify(normalizedSource)}\nBUILT:  ${JSON.stringify(normalizedBuilt)}`,
+        );
+      }
+      if (!normalizedBuilt.includes('—')) {
+        fail(id, `${distHowItWorks}'s land-contract paragraph does not contain the em dash (U+2014) present in the source`);
+      }
+      if (!normalizedBuilt.includes("aren't")) {
+        fail(id, `${distHowItWorks}'s land-contract paragraph does not contain "aren't" with its straight apostrophe, as it appears in the source`);
+      }
+
+      // -- 4. The accent is never text -------------------------------------
+      //
+      // Matches a `color:` declaration (not background-/border-/outline-
+      // color, all of which end in "-color" -- the negative lookbehind on a
+      // word char or hyphen excludes them) set to the accent hex value.
+      // Checked both in built CSS (case-insensitive -- Lightning CSS
+      // lowercases hex literals) and in every source .astro file, so a
+      // future minifier change can't silently stop this from being caught.
+
+      const accentTextRe = /(?<![\w-])color:\s*#ffd053/i;
+
+      const cssFiles = walkFiles(distDir).filter((p) => p.endsWith('.css'));
+      if (cssFiles.length === 0) {
+        fail(id, `no .css files found under ${distDir}`);
+      }
+      for (const f of cssFiles) {
+        if (accentTextRe.test(readUtf8File(f))) {
+          fail(id, `${f} sets a text color to the accent value #FFD053 -- the accent is a fill-only colour, never text on cream`);
+        }
+      }
+
+      const astroFiles = walkFiles(srcDir).filter((p) => p.endsWith('.astro'));
+      for (const f of astroFiles) {
+        if (accentTextRe.test(readUtf8File(f))) {
+          fail(id, `${f} sets a text color to the accent value -- the accent is a fill-only colour, never text`);
+        }
+      }
+
+      // -- 5. Status is text, not colour alone: Available (baseline), ------
+      // --    Pending and Sold (flip-build-assert-revert) -------------------
+
+      if (!existsSync(distHomesIndex)) {
+        fail(id, `missing ${distHomesIndex} after the baseline build`);
+      }
+      const baselineHomesHtml = readUtf8File(distHomesIndex);
+      if (!baselineHomesHtml.includes('>Available<')) {
+        fail(id, `${distHomesIndex} does not render 'Available' as visible badge text in the baseline build`);
+      }
+
+      writeFileSync(marengoFile, originalMarengo.replace('status: "Available"', 'status: "Pending"'), 'utf8');
+      writeFileSync(brownFile, originalBrown.replace('status: "Available"', 'status: "Sold"'), 'utf8');
+      clearAstroCache(toplevel);
+      build = runBuild(toplevel);
+      const flippedHomesHtml = existsSync(distHomesIndex) ? readUtf8File(distHomesIndex) : '';
+      writeFileSync(marengoFile, originalMarengo, 'utf8');
+      writeFileSync(brownFile, originalBrown, 'utf8');
+      if (build.timedOut) {
+        fail(id, `status-flip build timed out`);
+      }
+      if (build.status !== 0) {
+        fail(id, `status-flip build exited ${build.status}, expected 0`);
+      }
+      if (!flippedHomesHtml.includes('>Pending<')) {
+        fail(id, `${distHomesIndex} does not render 'Pending' as visible badge text after flipping a home's status`);
+      }
+      if (!flippedHomesHtml.includes('>Sold<')) {
+        fail(id, `${distHomesIndex} does not render 'Sold' as visible badge text after flipping a home's status`);
+      }
+
+      // -- 6. Final rebuild -- leave the tree in a known-good built state --
+
+      clearAstroCache(toplevel);
+      build = runBuild(toplevel);
+      if (build.status !== 0) {
+        fail(id, `final rebuild after the status-flip round trip exited ${build.status}, expected 0`);
+      }
+    } finally {
+      restoreAll();
+    }
+
+    pass(id);
+  },
+
+  /**
+   * 01-05 Task 2: the phase-level gate. Re-runs the cross-cutting
+   * assertions -- ROADMAP criterion 3 as a complete set of four literals,
+   * retired-phrasing and superseded-colour sweeps, internal-link
+   * resolution, and the README's presence and content -- over the whole
+   * assembled dist/ tree, once all ten pages exist together.
+   *
+   * Two assertions in this task's <acceptance_criteria> require a completed
+   * push (remote main SHA == local HEAD) and are therefore expected to fail
+   * in this executor's run: pushing is explicitly out of this executor's
+   * scope (a human performs it manually) and is recorded as a deferred item
+   * in 01-05-SUMMARY.md, not silently skipped or weakened here. Every other
+   * assertion below must pass.
+   */
+  'phase-complete': (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const distDir = join(toplevel, 'dist');
+    const srcDir = join(toplevel, 'src');
+    const contentDir = join(toplevel, 'src', 'content');
+    const readmePath = join(toplevel, 'README.md');
+
+    const equalHousingSentence =
+      'Equal Housing Opportunity. Owner financing is subject to a written agreement; this is not a commitment to lend or an offer of credit.';
+    const displayPhone = '(217) 269-0003';
+    const taglineAlt = 'Oak Homes — From Rent to Roots';
+
+    // -- 1. Baseline build; all ten expected routes emit ------------------
+
+    clearAstroCache(toplevel);
+    let build = runBuild(toplevel);
+    if (build.timedOut) {
+      fail(id, `baseline npm run build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `baseline npm run build exited ${build.status}:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+    }
+
+    const expectedRoutes = [
+      '',
+      'homes',
+      join('homes', '614-e-marengo-st'),
+      join('homes', '2734-brown-st'),
+      'how-it-works',
+      'about',
+      'learn',
+      join('learn', 'what-is-a-land-contract'),
+      'schedule',
+      'contact',
+    ];
+    for (const route of expectedRoutes) {
+      const p = route === '' ? join(distDir, 'index.html') : join(distDir, route, 'index.html');
+      if (!existsSync(p)) {
+        fail(id, `missing ${p} -- expected route did not emit`);
+      }
+    }
+
+    const sitemapPath = join(distDir, 'sitemap-index.xml');
+    if (!existsSync(sitemapPath)) {
+      fail(id, `missing ${sitemapPath} -- the sitemap did not generate`);
+    }
+
+    const htmlFiles = walkFiles(distDir).filter((p) => p.endsWith('.html'));
+    if (htmlFiles.length !== 10) {
+      fail(id, `expected exactly 10 built .html files, found ${htmlFiles.length}`);
+    }
+
+    // -- 2. ROADMAP criterion 3 as a complete set: four independent counts --
+    // --    across the ten pages, all equal to 10 -------------------------
+
+    const integrationsSlotMarker = 'integrations-slot';
+    let equalHousingCount = 0;
+    let phoneCount = 0;
+    let taglineCount = 0;
+    let integrationsSlotCount = 0;
+    for (const f of htmlFiles) {
+      const html = readUtf8File(f);
+      if (countOccurrences(html, equalHousingSentence) === 1) equalHousingCount += 1;
+      if (html.includes(displayPhone)) phoneCount += 1;
+      if (html.includes(taglineAlt)) taglineCount += 1;
+      if (countOccurrences(html, integrationsSlotMarker) === 1) integrationsSlotCount += 1;
+    }
+    if (equalHousingCount !== htmlFiles.length) {
+      fail(id, `${equalHousingCount} of ${htmlFiles.length} pages carry the Equal Housing sentence exactly once, expected all`);
+    }
+    if (phoneCount !== htmlFiles.length) {
+      fail(id, `${phoneCount} of ${htmlFiles.length} pages carry the display phone '${displayPhone}', expected all`);
+    }
+    if (taglineCount !== htmlFiles.length) {
+      fail(id, `${taglineCount} of ${htmlFiles.length} pages carry the tagline '${taglineAlt}' as the header brand mark's accessible name, expected all`);
+    }
+    if (integrationsSlotCount !== htmlFiles.length) {
+      fail(id, `${integrationsSlotCount} of ${htmlFiles.length} pages carry the integrations-slot marker exactly once, expected all`);
+    }
+
+    // -- 3. Tagline present but never re-typeset ---------------------------
+
+    const astroFiles = walkFiles(srcDir).filter((p) => p.endsWith('.astro'));
+    for (const f of astroFiles) {
+      if (readUtf8File(f).includes('FROM RENT TO ROOTS')) {
+        fail(id, `${f} contains the all-caps wordmark literal 'FROM RENT TO ROOTS' -- it must ship as an image asset only`);
+      }
+    }
+
+    // -- 4. Retired phrasing and superseded colour, whole-tree ------------
+
+    for (const literal of ['equitable interest', 'honest terms', 'not a rental']) {
+      for (const f of htmlFiles) {
+        if (readUtf8File(f).toLowerCase().includes(literal)) {
+          fail(id, `${f} contains the retired phrasing '${literal}' (case-insensitive)`);
+        }
+      }
+    }
+
+    let foundAccent = false;
+    let foundPriceGold = false;
+    const cssFiles = walkFiles(distDir).filter((p) => p.endsWith('.css'));
+    for (const f of htmlFiles.concat(cssFiles)) {
+      const upper = readUtf8File(f).toUpperCase();
+      if (upper.includes('F6C84C')) {
+        fail(id, `${f} contains the superseded design-spec yellow estimate F6C84C`);
+      }
+      if (upper.includes('#FFD053')) foundAccent = true;
+      if (upper.includes('#A87E24')) foundPriceGold = true;
+    }
+    if (!foundAccent) fail(id, `no built file under dist/ contains the accent value #FFD053`);
+    if (!foundPriceGold) fail(id, `no built file under dist/ contains the price-gold value #A87E24`);
+
+    // -- 5. Legally-sensitive copy absent from src/content/ ----------------
+
+    const contentFiles = walkFiles(contentDir);
+    for (const f of contentFiles) {
+      let text;
+      try {
+        text = readUtf8File(f);
+      } catch {
+        continue;
+      }
+      if (text.includes('Equal Housing Opportunity') || text.includes('agreement for deed')) {
+        fail(id, `${f} under src/content/ contains legally-sensitive copy -- it must exist only in .astro files (DESIGN-03)`);
+      }
+    }
+
+    // -- 6. Every internal link resolves to a file that exists under dist/ --
+
+    const ANCHOR_HREF_RE = /<a\b[^>]*\bhref="([^"]*)"/g;
+    const internalHrefs = new Set();
+    for (const f of htmlFiles) {
+      const html = readUtf8File(f);
+      let m;
+      ANCHOR_HREF_RE.lastIndex = 0;
+      while ((m = ANCHOR_HREF_RE.exec(html)) !== null) {
+        const href = m[1];
+        if (!href.startsWith('/') || href.startsWith('//')) continue; // external, protocol-relative
+        if (href.startsWith('/mailto:') || href.startsWith('/tel:')) continue; // never emitted, defensive
+        internalHrefs.add(href);
+      }
+    }
+    function resolveDistPath(href) {
+      let p = href.split('#')[0].split('?')[0];
+      if (p === '') p = '/';
+      if (p.endsWith('/')) {
+        p = p + 'index.html';
+      } else {
+        const lastSegment = p.split('/').pop() || '';
+        if (!lastSegment.includes('.')) p = p + '/index.html';
+      }
+      return join(distDir, p);
+    }
+    const unresolved = [];
+    for (const href of internalHrefs) {
+      const resolved = resolveDistPath(href);
+      if (!existsSync(resolved)) unresolved.push(`${href} -> ${resolved}`);
+    }
+    if (unresolved.length > 0) {
+      fail(id, `${unresolved.length} internal link(s) do not resolve to a file under dist/:\n${unresolved.join('\n')}`);
+    }
+    if (internalHrefs.size === 0) {
+      fail(id, `no internal (site-relative) <a href> links were found across ${htmlFiles.length} built pages -- expected many`);
+    }
+
+    // -- 7. Reproducibility, observed rather than gated --------------------
+    //
+    // Two consecutive builds are run and any differing dist/ .html files
+    // are recorded as information, never as a failure -- see this plan's
+    // <review_response> for why whole-tree equality is demoted from a gate.
+    // The assertion that carries real weight (card order stability) is
+    // gated in 01-03 Task 2 at the granularity it governs.
+
+    const firstBuildContents = new Map();
+    for (const f of htmlFiles) firstBuildContents.set(f, readUtf8File(f));
+
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `second consecutive build exited ${build.status}, expected 0`);
+    }
+    const secondHtmlFiles = walkFiles(distDir).filter((p) => p.endsWith('.html'));
+    const reproDiffs = [];
+    for (const f of secondHtmlFiles) {
+      const before = firstBuildContents.get(f);
+      const after = readUtf8File(f);
+      if (before !== undefined && before !== after) reproDiffs.push(f);
+    }
+    process.stdout.write(
+      reproDiffs.length === 0
+        ? `INFO ${id}: two consecutive builds produced byte-identical dist/ HTML for all ${secondHtmlFiles.length} files\n`
+        : `INFO ${id}: two consecutive builds differed in ${reproDiffs.length} file(s): ${reproDiffs.join(', ')}\n`,
+    );
+
+    // -- 8. README hands off to Phase 2 -------------------------------------
+
+    if (!existsSync(readmePath)) {
+      fail(id, `missing ${readmePath}`);
+    }
+    const readme = readUtf8File(readmePath);
+    if (!readme.includes('npm run build')) {
+      fail(id, `${readmePath} does not contain 'npm run build'`);
+    }
+    for (const collection of ['properties', 'blog', 'settings']) {
+      if (!readme.includes(collection)) {
+        fail(id, `${readmePath} does not name the '${collection}' content collection`);
+      }
+    }
+    if (!/2000\s?px/.test(readme)) {
+      fail(id, `${readmePath} does not state the ~2000px photo pre-resize convention`);
+    }
+    if (!/integrations slot/i.test(readme)) {
+      fail(id, `${readmePath} does not name the integrations slot`);
+    }
+
+    // -- 9. Working tree is clean -------------------------------------------
+
+    const statusResult = runGit(['status', '--porcelain']);
+    if (!statusResult.ok) {
+      fail(id, `git status --porcelain failed: ${statusResult.reason || statusResult.stderr}`);
+    }
+    if (statusResult.stdout.length > 0) {
+      fail(id, `git status --porcelain is not empty -- commit everything before running this check:\n${statusResult.stdout}`);
+    }
+
+    // -- 10. Remote main matches local HEAD ---------------------------------
+    //
+    // Expected to fail in this executor's run: the push is a deferred owner
+    // action (01-05-SUMMARY.md "Deferred to the owner"), not something this
+    // executor is permitted to perform. Asserted honestly rather than
+    // skipped, so a human re-running this check after pushing gets a real
+    // pass/fail signal.
+
+    const lsRemoteMain = runGit(['ls-remote', 'origin', 'refs/heads/main']);
+    if (lsRemoteMain.timedOut) {
+      fail(id, lsRemoteMain.reason);
+    }
+    if (!lsRemoteMain.ok) {
+      fail(id, `git ls-remote origin refs/heads/main failed: ${lsRemoteMain.stderr}`);
+    }
+    const mainLine = lsRemoteMain.stdout.split(/\r\n|\n/).filter((l) => l.length > 0)[0] || '';
+    const remoteMainSha = mainLine.split(/\s+/)[0] || '';
+    const headResult = runGit(['rev-parse', 'HEAD']);
+    if (!headResult.ok) {
+      fail(id, `git rev-parse HEAD failed: ${headResult.timedOut ? headResult.reason : headResult.stderr}`);
+    }
+    if (remoteMainSha !== headResult.stdout) {
+      fail(
+        id,
+        `remote main SHA (${remoteMainSha}) does not equal local HEAD (${headResult.stdout}) -- push is a deferred owner action, see 01-05-SUMMARY.md`,
+      );
+    }
+
+    pass(id);
+  },
 };
 
 // ---------------------------------------------------------------------------
