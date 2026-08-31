@@ -1,0 +1,95 @@
+---
+// src/pages/schedule.astro
+//
+// Phone-first Schedule a Showing page (EDU-05). The primary element is the
+// phone CTA, both phone values read from src/content/settings.json rather
+// than retyped, with a 44px minimum hit area (01-04-PLAN.md Task 2).
+import { getEntry } from 'astro:content';
+import Layout from '../layouts/Layout.astro';
+import Button from '../components/Button.astro';
+
+const settings = await getEntry('settings', 'main');
+if (!settings) {
+  throw new Error('schedule.astro: settings entry "main" not found in src/content/settings.json');
+}
+const { phone, phoneHref } = settings.data;
+---
+
+<Layout title="Schedule a Showing" description="Call Oak Homes to schedule a showing of one of our available homes.">
+  <section class="schedule">
+    <h1>Schedule a Showing</h1>
+    <p class="lead">
+      Call or message us and we'll set up a time to see the home. We'll confirm the details and
+      meet you there.
+    </p>
+
+    <div class="phone-card">
+      <p class="phone-eyebrow">Call to schedule a showing</p>
+      <a class="phone-line" href={phoneHref}>{phone}</a>
+      <p class="phone-explain">
+        We'll ask a few quick questions about the home you're interested in and find a time that
+        works for both of us. No forms to fill out first -- a phone call gets you scheduled.
+      </p>
+      <div class="phone-buttons">
+        <Button href={phoneHref} variant="accent">Call {phone}</Button>
+        <Button href="/contact" variant="ghost">Message Us</Button>
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .schedule {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+  }
+
+  .schedule .lead {
+    font-size: 19px;
+    line-height: 1.5;
+    max-width: 70ch;
+  }
+
+  .phone-card {
+    background-color: var(--color-cream-deep);
+    border-radius: 16px;
+    padding: 32px 24px;
+    margin-top: 24px;
+    text-align: center;
+  }
+
+  .phone-eyebrow {
+    margin: 0 0 6px;
+    color: var(--color-ink);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .phone-line {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    font-family: var(--font-display);
+    font-size: 36px;
+    font-weight: 600;
+    color: var(--color-ink);
+    text-decoration: none;
+  }
+
+  .phone-explain {
+    max-width: 60ch;
+    margin: 16px auto 0;
+  }
+
+  .phone-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+</style>

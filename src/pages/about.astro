@@ -1,0 +1,92 @@
+---
+// src/pages/about.astro
+//
+// Company introduction (EDU-03), adapted from the mockup's About section
+// (docs/reference/Oak-Homes-Website-SHARE.html, id="page-about"). Ordinary
+// marketing copy -- no legal claims, no promises of approval, ownership, or
+// credit outcomes (01-04-PLAN.md Task 2).
+import Layout from '../layouts/Layout.astro';
+import Button from '../components/Button.astro';
+---
+
+<Layout title="About" description="About Oak Homes and our approach to owner-financed homeownership in Flint, MI.">
+  <section class="about">
+    <h1>About Oak Homes</h1>
+    <p class="lead">
+      Our goal is to make homeownership more accessible through flexible paths like land
+      contracts.
+    </p>
+
+    <h2>Built for real-world buyers</h2>
+    <p>
+      These homes are sold as-is, without expensive renovations or retail markups. That approach
+      keeps prices realistic and makes flexible ownership paths possible where traditional
+      pricing wouldn't.
+    </p>
+
+    <h2>A clear, straightforward process</h2>
+    <p>
+      We keep the process straightforward, with clear terms and expectations from the start --
+      no hidden steps, just a transparent agreement you can understand.
+    </p>
+
+    <h2>Built for committed buyers</h2>
+    <p>
+      This model is ideal for buyers who want to stop renting, take ownership seriously, and
+      build something long term.
+    </p>
+
+    <blockquote>
+      "Owning a home is a keystone of wealth — both financial affluence and emotional security."
+      — Suze Orman
+    </blockquote>
+
+    <div class="about-cta">
+      <Button href="/homes">Browse Homes</Button>
+      <Button href="/contact" variant="ghost">Contact Us</Button>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .about {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .about .lead {
+    font-size: 19px;
+    line-height: 1.5;
+    max-width: 70ch;
+    margin: 0 0 16px;
+  }
+
+  .about h2 {
+    margin-top: 24px;
+  }
+
+  .about p {
+    margin: 0;
+    max-width: 70ch;
+  }
+
+  blockquote {
+    border-left: 4px solid var(--color-pending);
+    padding: 8px 18px;
+    color: var(--color-ink);
+    font-style: italic;
+    margin: 30px 0;
+    max-width: 70ch;
+  }
+
+  .about-cta {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+  }
+</style>

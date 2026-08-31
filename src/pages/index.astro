@@ -1,18 +1,52 @@
 ---
 // src/pages/index.astro
 //
-// Homepage: settings-driven intro + a Browse Homes CTA. The 3-step overview
-// and featured-homes section arrive in plan 01-04 -- this is deliberately
-// minimal, replacing plan 01-02 Task 2's scaffold placeholder.
-import { getEntry } from 'astro:content';
+// Homepage: settings-driven intro, a condensed 3-step overview linking
+// through to the full How It Works page, and featured available homes with
+// the D-07 never-empty fallback. Replaces plan 01-02 Task 2's minimal
+// placeholder (01-04-PLAN.md Task 1).
+import { getCollection, getEntry } from 'astro:content';
 import Layout from '../layouts/Layout.astro';
 import Button from '../components/Button.astro';
+import StepList from '../components/StepList.astro';
+import PropertyCard from '../components/PropertyCard.astro';
 
 const settings = await getEntry('settings', 'main');
 if (!settings) {
   throw new Error('index.astro: settings entry "main" not found in src/content/settings.json');
 }
 const { homepageIntro } = settings.data;
+
+// Condensed 3-step version of the canonical one-pager's 4-step process (D-04
+// vocabulary, not a separately invented one). The full 4-step process lives
+// on /how-it-works.
+const steps = [
+  {
+    title: 'Find a home & reach out',
+    body: "Browse our available homes and contact us about the one you like, or tell us what you're looking for and we'll match you.",
+  },
+  {
+    title: 'Agree on terms',
+    body: 'Down payment, monthly payment, and length — all written in plain language and agreed up front. No hidden steps.',
+  },
+  {
+    title: 'Move in and settle in',
+    body: 'You take possession of the home and make monthly payments toward full ownership under the contract.',
+  },
+];
+
+// D-06/D-07: primary path is Available homes flagged featured; when none are
+// flagged, fall back to the newest Available homes by publishDate, capped at
+// three -- the section must never render empty by accident.
+const properties = await getCollection('properties');
+const available = properties.filter((entry) => entry.data.status === 'Available');
+const featuredAvailable = available.filter((entry) => entry.data.featured);
+const featured =
+  featuredAvailable.length > 0
+    ? featuredAvailable
+    : [...available]
+        .sort((a, b) => b.data.publishDate.getTime() - a.data.publishDate.getTime())
+        .slice(0, 3);
 ---
 
 <Layout title="A Path to Homeownership">
@@ -21,6 +55,22 @@ const { homepageIntro } = settings.data;
     <p>{homepageIntro}</p>
     <Button href="/homes">Browse Homes</Button>
   </section>
+
+  <section class="steps-section">
+    <h2>How it works</h2>
+    <StepList steps={steps} />
+    <p class="section-more"><a href="/how-it-works">See the full process &rarr;</a></p>
+  </section>
+
+  {featured.length > 0 && (
+    <section class="featured-section">
+      <h2>Available Homes</h2>
+      <div class="featured-grid">
+        {featured.map((entry) => <PropertyCard entry={entry} />)}
+      </div>
+      <p class="section-more"><a href="/homes">See all available homes &rarr;</a></p>
+    </section>
+  )}
 </Layout>
 
 <style>
@@ -31,5 +81,29 @@ const { homepageIntro } = settings.data;
     display: flex;
     flex-direction: column;
     gap: 16px;
+  }
+
+  .steps-section,
+  .featured-section {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px 24px;
+  }
+
+  .section-more {
+    margin: 16px 0 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .section-more a {
+    text-decoration: underline;
+  }
+
+  .featured-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 24px;
+    margin-top: 24px;
   }
 </style>
