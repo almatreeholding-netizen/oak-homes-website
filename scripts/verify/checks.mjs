@@ -886,6 +886,209 @@ const checks = {
 
     pass(id);
   },
+
+  /**
+   * Task 4: the owner's real logo ships as web-ready assets in all three
+   * UI-SPEC variants (ink, light, circle) plus a favicon set, consumed only
+   * through BrandMark.astro with the single documented exemption of the
+   * favicon <link> tags in Layout.astro's head, none exceeding the 100KB
+   * budget, and the header mark carrying the tagline as its alt text on
+   * every built page.
+   */
+  'brand-assets': (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const brandDir = join(toplevel, 'public', 'brand');
+    const brandMarkPath = join(toplevel, 'src', 'components', 'BrandMark.astro');
+    const layoutPath = join(toplevel, 'src', 'layouts', 'Layout.astro');
+    const srcDir = join(toplevel, 'src');
+    const distDir = join(toplevel, 'dist');
+    const taglineAlt = 'Oak Homes — From Rent to Roots';
+    const MAX_BYTES = 102400;
+
+    // -- 1. public/brand/ has the three variants plus a favicon set --------
+
+    let brandFiles;
+    try {
+      brandFiles = listDir(brandDir);
+    } catch {
+      fail(id, `missing directory: ${brandDir}`);
+    }
+    if (brandFiles.length < 6) {
+      fail(id, `${brandDir} has ${brandFiles.length} files, expected at least 6`);
+    }
+    for (const variant of ['ink', 'light', 'circle']) {
+      if (!brandFiles.some((f) => f.startsWith(`mark-${variant}-`))) {
+        fail(id, `${brandDir} has no file matching 'mark-${variant}-*' — the ${variant} variant is missing`);
+      }
+    }
+    const requiredFavicons = ['favicon-32.png', 'apple-touch-icon-180.png', 'android-chrome-192.png'];
+    for (const name of requiredFavicons) {
+      if (!brandFiles.includes(name)) {
+        fail(id, `${brandDir} is missing required favicon file '${name}'`);
+      }
+    }
+
+    // -- 2. Every exported file stays under the 100KB budget ---------------
+
+    for (const name of brandFiles) {
+      const bytes = statSync(join(brandDir, name)).size;
+      if (bytes > MAX_BYTES) {
+        fail(id, `${join(brandDir, name)} is ${bytes} bytes, exceeds the ${MAX_BYTES}-byte budget`);
+      }
+    }
+
+    // -- 3. BrandMark.astro exists, accepts a variant prop, knows 'circle' --
+
+    let brandMark;
+    try {
+      brandMark = readUtf8File(brandMarkPath);
+    } catch {
+      fail(id, `missing file: ${brandMarkPath}`);
+    }
+    if (!/variant/.test(brandMark)) {
+      fail(id, `${brandMarkPath} does not appear to declare a 'variant' prop`);
+    }
+    if (!brandMark.includes('circle')) {
+      fail(id, `${brandMarkPath} does not contain the identifier 'circle'`);
+    }
+
+    // The wordmark was not re-typeset anywhere under src/.
+    if (brandMark.includes('FROM RENT TO ROOTS')) {
+      fail(id, `${brandMarkPath} contains the all-caps wordmark literal 'FROM RENT TO ROOTS' — it must ship as an image asset only`);
+    }
+
+    // -- 4. /brand/ is named only in BrandMark.astro, with Layout.astro's --
+    // -- favicon <link> exemption confined to <link> elements --------------
+
+    const astroFiles = walkFiles(srcDir).filter((p) => p.endsWith('.astro'));
+    for (const f of astroFiles) {
+      if (f === brandMarkPath || f === layoutPath) continue;
+      const text = readUtf8File(f);
+      if (text.includes('/brand/')) {
+        fail(id, `${f} contains '/brand/' — every brand-path reference must go through BrandMark.astro (Layout.astro's favicon <link> exemption aside)`);
+      }
+      if (text.includes('FROM RENT TO ROOTS')) {
+        fail(id, `${f} contains the all-caps wordmark literal 'FROM RENT TO ROOTS' — it must ship as an image asset only`);
+      }
+    }
+
+    const layout = readUtf8File(layoutPath);
+    if (layout.includes('FROM RENT TO ROOTS')) {
+      fail(id, `${layoutPath} contains the all-caps wordmark literal 'FROM RENT TO ROOTS' — it must ship as an image asset only`);
+    }
+    // Every /brand/ occurrence in Layout.astro must sit inside a <link ...>
+    // element whose rel is icon, apple-touch-icon, or manifest. Walk each
+    // <link ...> tag and confirm any /brand/ reference found outside one of
+    // those tags does not exist.
+    const linkTagRegex = /<link\b[^>]*>/g;
+    const brandInAllowedLinks = [];
+    let match;
+    while ((match = linkTagRegex.exec(layout)) !== null) {
+      const tag = match[0];
+      if (!tag.includes('/brand/')) continue;
+      const relMatch = tag.match(/rel=["']([^"']+)["']/);
+      const rel = relMatch ? relMatch[1] : '';
+      if (!['icon', 'apple-touch-icon', 'manifest'].includes(rel)) {
+        fail(id, `${layoutPath} has a <link> referencing '/brand/' whose rel is '${rel}', expected one of icon/apple-touch-icon/manifest: ${tag}`);
+      }
+      brandInAllowedLinks.push(tag);
+    }
+    // Strip every allowed <link> tag out, then confirm no /brand/ occurrence
+    // remains anywhere else in the file (an <img>, srcset, or CSS reference).
+    let layoutWithoutFaviconLinks = layout;
+    for (const tag of brandInAllowedLinks) {
+      layoutWithoutFaviconLinks = layoutWithoutFaviconLinks.replace(tag, '');
+    }
+    if (layoutWithoutFaviconLinks.includes('/brand/')) {
+      fail(id, `${layoutPath} references '/brand/' outside an allowed favicon <link> element — every other reference must go through BrandMark.astro`);
+    }
+    if (brandInAllowedLinks.length === 0) {
+      fail(id, `${layoutPath} has no favicon <link> element referencing '/brand/' — expected the exported favicon set to be wired into <head>`);
+    }
+
+    // -- 5. Build, then assert the built HTML ------------------------------
+
+    clearAstroCache(toplevel);
+    const build = runBuild(toplevel);
+    if (build.timedOut) {
+      fail(id, `npm run build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `npm run build exited ${build.status}:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+    }
+
+    const htmlFiles = walkFiles(distDir).filter((p) => p.endsWith('.html'));
+    if (htmlFiles.length === 0) {
+      fail(id, `no .html files found under ${distDir}`);
+    }
+
+    // Home page references the favicon.
+    const homePagePath = join(distDir, 'index.html');
+    if (!existsSync(homePagePath)) {
+      fail(id, `missing ${homePagePath}`);
+    }
+    const homePage = readUtf8File(homePagePath);
+    if (!homePage.includes('/brand/favicon-32.png') && !homePage.includes('/brand/apple-touch-icon-180.png')) {
+      fail(id, `${homePagePath} head does not reference the exported favicon set`);
+    }
+
+    for (const f of htmlFiles) {
+      const content = readUtf8File(f);
+
+      const taglineCount = countOccurrences(content, taglineAlt);
+      if (taglineCount !== 1) {
+        fail(id, `${f} contains ${taglineCount} occurrences of the alt literal '${taglineAlt}', expected exactly 1`);
+      }
+      if (!content.includes(`alt="${taglineAlt}"`)) {
+        fail(id, `${f} does not carry '${taglineAlt}' as an alt attribute value`);
+      }
+
+      if (!/mark-ink-/.test(content)) {
+        fail(id, `${f} does not reference an ink mark asset (mark-ink-*) — the header mark must render on every page`);
+      }
+      if (!/mark-light-/.test(content)) {
+        fail(id, `${f} does not reference a light mark asset (mark-light-*) — the footer mark must render on every page`);
+      }
+
+      // Every <img> emitted has either a non-empty alt or empty-alt +
+      // aria-hidden="true" (Astro renders an empty-string alt prop as the
+      // bare boolean attribute `alt`, not `alt=""`). Strip HTML comments
+      // first -- Astro preserves them in output, and prose mentioning "img"
+      // inside a comment must not be mistaken for a rendered element.
+      const contentWithoutComments = content.replace(/<!--[^]*?-->/g, '');
+      const imgTagRegex = /<img\b[^>]*>/g;
+      let imgMatch;
+      while ((imgMatch = imgTagRegex.exec(contentWithoutComments)) !== null) {
+        const tag = imgMatch[0];
+        const altMatch = tag.match(/\balt="([^"]*)"/);
+        const hasBareAlt = /\balt(?=[\s>])/.test(tag) && !altMatch;
+        const hasNonEmptyAlt = altMatch && altMatch[1].length > 0;
+        const hasAriaHiddenTrue = tag.includes('aria-hidden="true"');
+        if (!hasNonEmptyAlt && !(hasBareAlt && hasAriaHiddenTrue) && !(altMatch && altMatch[1] === '' && hasAriaHiddenTrue)) {
+          fail(id, `${f} has an <img> with neither a non-empty alt nor an empty-alt+aria-hidden="true" pairing: ${tag}`);
+        }
+      }
+    }
+
+    // Property page's gallery region carries the placeholder mark while
+    // photos is empty.
+    const propertyPagePath = join(distDir, 'homes', '614-e-marengo-st', 'index.html');
+    if (!existsSync(propertyPagePath)) {
+      fail(id, `missing ${propertyPagePath}`);
+    }
+    const propertyPage = readUtf8File(propertyPagePath);
+    const galleryRegionMatch = propertyPage.match(/<div class="gallery-region"[^]*?<\/div>\s*<\/div>/);
+    if (!galleryRegionMatch || !galleryRegionMatch[0].includes('/brand/')) {
+      fail(id, `${propertyPagePath}'s gallery-region does not reference a brand asset — the zero-photo placeholder must render the mark`);
+    }
+
+    pass(id);
+  },
 };
 
 // ---------------------------------------------------------------------------

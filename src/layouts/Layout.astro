@@ -6,14 +6,9 @@
 // header, phone, footer, or the verbatim Equal Housing line, because all four
 // live only here.
 //
-// Header brand mark: this task ships the minimum real mark needed to prove
-// the tracer end to end -- a text logotype link to "/". Plan 01-02 Task 4
-// introduces BrandMark.astro (ink/light/circle variants, the exported raster
-// assets under public/brand/, and the header mark's tagline alt text) and
-// replaces this text mark with that component. Do not add BrandMark.astro or
-// public/brand/ here -- that is Task 4's scope.
 import { getEntry } from 'astro:content';
 import Nav from '../components/Nav.astro';
+import BrandMark from '../components/BrandMark.astro';
 import '../styles/global.css';
 
 interface Props {
@@ -45,13 +40,24 @@ const equalHousingLine =
     <meta name="viewport" content="width=device-width" />
     <meta name="description" content={description} />
     <meta name="generator" content={Astro.generator} />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" href="/favicon.ico" />
+    <!--
+      Favicon set exported by scripts/build-brand-assets.mjs (01-02 Task 4).
+      This is the one documented exemption from "only BrandMark.astro names a
+      brand path": a favicon is declared with link elements in the document
+      head, markup BrandMark.astro cannot emit because it renders an image
+      element in the body. Confined to rel="icon" / "apple-touch-icon" -- see
+      BrandMark.astro for every other brand-image reference in this project.
+    -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/brand/apple-touch-icon-180.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/brand/android-chrome-192.png" />
     <title>{title} | Oak Homes</title>
   </head>
   <body>
     <header class="site-header">
-      <a href="/" class="brand-mark">Oak Homes</a>
+      <a href="/" class="brand-mark">
+        <BrandMark variant="ink" alt="Oak Homes — From Rent to Roots" />
+      </a>
       <Nav />
       <a href={phoneHref} class="header-phone">{phone}</a>
     </header>
@@ -61,6 +67,7 @@ const equalHousingLine =
     </main>
 
     <footer class="site-footer">
+      <BrandMark variant="light" class="footer-mark" />
       <div class="footer-contact">
         <a href={phoneHref}>{phone}</a>
         <a href={`mailto:${email}`}>{email}</a>
@@ -135,11 +142,18 @@ const equalHousingLine =
   }
 
   .brand-mark {
-    font-family: var(--font-display);
-    font-size: 24px;
-    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
     text-decoration: none;
-    color: var(--color-ink);
+  }
+
+  /* :global -- .footer-mark lands on BrandMark.astro's own <picture>
+     element, which carries that child component's scope hash rather than
+     this file's. An unscoped selector here would never match it. */
+  :global(.footer-mark) {
+    display: block;
+    margin-bottom: 8px;
   }
 
   .header-phone {
