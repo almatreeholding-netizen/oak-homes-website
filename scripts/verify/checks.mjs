@@ -1408,6 +1408,241 @@ const checks = {
 
     pass(id);
   },
+
+  /**
+   * Task 2: the Browse Homes grid. Every mutation below restores its content
+   * file(s) immediately after the build that consumes it and BEFORE any
+   * fail() call, following the pattern established by skeleton-e2e and
+   * photos-resized -- fail() calls process.exit() directly, which does not
+   * run pending `finally` blocks, so restoration can never depend on one.
+   */
+  'homes-grid': (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const distIndexPath = join(toplevel, 'dist', 'homes', 'index.html');
+    const propertiesDir = join(toplevel, 'src', 'content', 'properties');
+    const marengoFile = join(propertiesDir, '614-e-marengo-st.md');
+    const brownFile = join(propertiesDir, '2734-brown-st.md');
+
+    const equalHousingSentence =
+      'Equal Housing Opportunity. Owner financing is subject to a written agreement; this is not a commitment to lend or an offer of credit.';
+
+    const originalMarengo = readUtf8File(marengoFile);
+    const originalBrown = readUtf8File(brownFile);
+
+    /** Ordered sequence of card identifiers, in DOM order, from built HTML. */
+    function extractSlugSequence(html) {
+      const re = /data-property-slug="([^"]+)"/g;
+      const seq = [];
+      let m;
+      while ((m = re.exec(html)) !== null) seq.push(m[1]);
+      return seq;
+    }
+
+    function assertNonEmptyAlts(html, label) {
+      const contentWithoutComments = html.replace(/<!--[^]*?-->/g, '');
+      const imgTagRegex = /<img\b[^>]*>/g;
+      let imgMatch;
+      while ((imgMatch = imgTagRegex.exec(contentWithoutComments)) !== null) {
+        const tag = imgMatch[0];
+        const altMatch = tag.match(/\balt="([^"]*)"/);
+        const hasBareAlt = /\balt(?=[\s>])/.test(tag) && !altMatch;
+        const hasNonEmptyAlt = altMatch && altMatch[1].length > 0;
+        const hasAriaHiddenTrue = tag.includes('aria-hidden="true"');
+        if (!hasNonEmptyAlt && !(hasBareAlt && hasAriaHiddenTrue) && !(altMatch && altMatch[1] === '' && hasAriaHiddenTrue)) {
+          fail(id, `${label} has an <img> with neither a non-empty alt nor an empty-alt+aria-hidden="true" pairing: ${tag}`);
+        }
+      }
+    }
+
+    // -- 1. Baseline build --------------------------------------------------
+
+    clearAstroCache(toplevel);
+    let build = runBuild(toplevel);
+    if (build.timedOut) {
+      fail(id, `baseline npm run build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `baseline npm run build exited ${build.status}:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+    }
+    if (!existsSync(distIndexPath)) {
+      fail(id, `missing ${distIndexPath} after a successful baseline build`);
+    }
+
+    let html = readUtf8File(distIndexPath);
+
+    if (!html.includes('614 E Marengo St')) {
+      fail(id, `${distIndexPath} does not contain '614 E Marengo St'`);
+    }
+    if (!html.includes('2734 Brown Street')) {
+      fail(id, `${distIndexPath} does not contain '2734 Brown Street'`);
+    }
+    for (const currency of ['$3,000', '$950', '$1,250']) {
+      if (!html.includes(currency)) {
+        fail(id, `${distIndexPath} does not contain the currency figure '${currency}'`);
+      }
+    }
+    const callForDetailsCount = countOccurrences(html, 'Call for details');
+    if (callForDetailsCount < 3) {
+      fail(id, `${distIndexPath} contains ${callForDetailsCount} occurrences of 'Call for details', expected at least 3 (Marengo's three absent specs)`);
+    }
+    if (!html.includes('4 bed')) {
+      fail(id, `${distIndexPath} does not show Brown Street's 4 beds as a value`);
+    }
+    if (!html.includes('1 bath')) {
+      fail(id, `${distIndexPath} does not show Brown Street's 1 bath as a value`);
+    }
+
+    const baselineSeq = extractSlugSequence(html);
+    if (baselineSeq.length !== 2) {
+      fail(id, `${distIndexPath} contains ${baselineSeq.length} card identifiers in the baseline build, expected exactly 2`);
+    }
+
+    assertNonEmptyAlts(html, distIndexPath);
+
+    if (countOccurrences(html, equalHousingSentence) !== 1) {
+      fail(id, `${distIndexPath} does not contain exactly 1 occurrence of the Equal Housing sentence`);
+    }
+    if (!html.includes('(217) 269-0003')) {
+      fail(id, `${distIndexPath} does not contain the header phone number`);
+    }
+
+    // -- 2. Sort-order flip: Marengo -> Sold ---------------------------------
+
+    writeFileSync(marengoFile, originalMarengo.replace('status: "Available"', 'status: "Sold"'), 'utf8');
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    writeFileSync(marengoFile, originalMarengo, 'utf8');
+    if (build.timedOut) {
+      fail(id, `sold-status build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `sold-status build exited ${build.status}, expected 0`);
+    }
+    const soldHtml = readUtf8File(distIndexPath);
+    const soldSeq = extractSlugSequence(soldHtml);
+    const brownIdxInSold = soldSeq.indexOf('2734-brown-st');
+    const marengoIdxInSold = soldSeq.indexOf('614-e-marengo-st');
+    if (brownIdxInSold === -1 || marengoIdxInSold === -1) {
+      fail(id, `sold-status build's card sequence is missing an expected slug: ${JSON.stringify(soldSeq)}`);
+    }
+    if (!(brownIdxInSold < marengoIdxInSold)) {
+      fail(id, `after setting Marengo to Sold, its card (position ${marengoIdxInSold}) does not sort after Brown Street's (position ${brownIdxInSold})`);
+    }
+
+    // Revert build, confirm the original card sequence returns.
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `post-revert rebuild exited ${build.status}, expected 0`);
+    }
+    const revertedSeq = extractSlugSequence(readUtf8File(distIndexPath));
+    if (JSON.stringify(revertedSeq) !== JSON.stringify(baselineSeq)) {
+      fail(id, `card sequence after reverting Marengo's status is ${JSON.stringify(revertedSeq)}, expected the original baseline order ${JSON.stringify(baselineSeq)}`);
+    }
+
+    // -- 3. Tiebreak determinism: two consecutive unmodified builds ---------
+
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `first determinism-check build exited ${build.status}, expected 0`);
+    }
+    const seqA = extractSlugSequence(readUtf8File(distIndexPath));
+
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `second determinism-check build exited ${build.status}, expected 0`);
+    }
+    const seqB = extractSlugSequence(readUtf8File(distIndexPath));
+
+    if (JSON.stringify(seqA) !== JSON.stringify(seqB)) {
+      fail(id, `two consecutive builds produced different card-identifier sequences: ${JSON.stringify(seqA)} vs ${JSON.stringify(seqB)} -- the publishDate-then-slug tiebreak is not deterministic`);
+    }
+
+    // -- 4. All three badge variants -----------------------------------------
+
+    writeFileSync(marengoFile, originalMarengo.replace('status: "Available"', 'status: "Pending"'), 'utf8');
+    writeFileSync(brownFile, originalBrown.replace('status: "Available"', 'status: "Sold"'), 'utf8');
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    writeFileSync(marengoFile, originalMarengo, 'utf8');
+    writeFileSync(brownFile, originalBrown, 'utf8');
+    if (build.timedOut) {
+      fail(id, `badge-variant build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `badge-variant build exited ${build.status}, expected 0`);
+    }
+    const badgeHtml = readUtf8File(distIndexPath);
+    // "Available" is asserted via the always-present "Available Homes"
+    // section heading, since both entries were deliberately moved away from
+    // Available for this proof -- Pending and Sold are asserted via their
+    // badge class + label pairing.
+    if (!badgeHtml.includes('Available Homes')) {
+      fail(id, `badge-variant build's page does not contain 'Available Homes'`);
+    }
+    if (!/class="status-badge status-pending[^"]*"[^<]*>Pending</.test(badgeHtml)) {
+      fail(id, `badge-variant build's page does not render a Pending badge with label 'Pending'`);
+    }
+    if (!/class="status-badge status-sold[^"]*"[^<]*>Sold</.test(badgeHtml)) {
+      fail(id, `badge-variant build's page does not render a Sold badge with label 'Sold'`);
+    }
+    // Sold reads as a stamp: ink fill, cream text -- asserted against the
+    // built CSS rule rather than a resolved hex literal, since Tailwind v4's
+    // Lightning CSS minifier leaves var(--color-*) references intact here
+    // rather than inlining them (unlike the raw hex values in global.css).
+    const soldRuleMatch = badgeHtml.match(/\.status-sold\[data-astro-cid-[a-z0-9]+\]\{[^}]*\}/);
+    if (!soldRuleMatch || !soldRuleMatch[0].includes('background-color:var(--color-ink)') || !soldRuleMatch[0].includes('color:var(--color-cream)')) {
+      fail(id, `badge-variant build's .status-sold rule is not 'background-color:var(--color-ink);color:var(--color-cream)': ${soldRuleMatch ? soldRuleMatch[0] : '(no match)'}`);
+    }
+
+    // Rebuild clean so subsequent steps observe the real, un-mutated data.
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `rebuild after badge-variant revert exited ${build.status}, expected 0`);
+    }
+
+    // -- 5. Empty state -------------------------------------------------------
+
+    const marengoMoved = `${marengoFile}.bak`;
+    const brownMoved = `${brownFile}.bak`;
+    renameSync(marengoFile, marengoMoved);
+    renameSync(brownFile, brownMoved);
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    renameSync(marengoMoved, marengoFile);
+    renameSync(brownMoved, brownFile);
+    if (build.timedOut) {
+      fail(id, `empty-collection build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `empty-collection build exited ${build.status}, expected 0 -- a properties collection with zero entries must still build`);
+    }
+    const emptyHtml = readUtf8File(distIndexPath);
+    if (!emptyHtml.includes('No Homes Available Right Now')) {
+      fail(id, `empty-collection build's page does not contain 'No Homes Available Right Now'`);
+    }
+    if (!emptyHtml.includes('(217) 269-0003')) {
+      fail(id, `empty-collection build's page does not contain the phone number`);
+    }
+
+    // -- 6. Final rebuild -- leave the tree in a known-good built state -----
+
+    clearAstroCache(toplevel);
+    build = runBuild(toplevel);
+    if (build.status !== 0) {
+      fail(id, `final rebuild after all mutation round-trips exited ${build.status}, expected 0`);
+    }
+
+    pass(id);
+  },
 };
 
 // ---------------------------------------------------------------------------
