@@ -19,6 +19,8 @@
 import { readFileSync, readdirSync, statSync, writeFileSync, renameSync, existsSync, rmSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import sharp from 'sharp';
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -1089,6 +1091,323 @@ const checks = {
 
     pass(id);
   },
+
+  /**
+   * Task 1: assert the extraction script's structure, dimensions, and
+   * atomicity guarantees, and that both content files carry the migrated
+   * real data validated against the Property schema.
+   *
+   * This check re-derives the expected source photos from the mockup
+   * independently of scripts/extract-mockup-photos.mjs (its own address+
+   * photos-array parse, not a call into the script's internals), so a
+   * shared bug in both places can't produce a false pass.
+   *
+   * The two failure-mode proofs (threshold-lowering, forced middle-photo
+   * failure) mutate public/uploads/properties/ on disk. fail(id, ...) calls
+   * process.exit() directly, which does NOT run pending `finally` blocks --
+   * confirmed empirically, not assumed -- so every assertion during the
+   * destructive section throws a plain Error instead of calling fail()
+   * directly; restoration always runs in an ordinary catch block BEFORE
+   * fail() is ever invoked, so a failed proof can never leave the working
+   * tree in a mutated state.
+   */
+  'photos-resized': async (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const scriptPath = join(toplevel, 'scripts', 'extract-mockup-photos.mjs');
+    const mockupPath = join(toplevel, 'docs', 'reference', 'Oak-Homes-Website-SHARE.html');
+    const pkgJsonPath = join(toplevel, 'package.json');
+    const propertiesDir = join(toplevel, 'src', 'content', 'properties');
+    const marengoFile = join(propertiesDir, '614-e-marengo-st.md');
+    const brownFile = join(propertiesDir, '2734-brown-st.md');
+    const marengoDir = join(toplevel, 'public', 'uploads', 'properties', '614-e-marengo-st');
+    const brownDir = join(toplevel, 'public', 'uploads', 'properties', '2734-brown-st');
+    const MAX_EDGE = 2000;
+    const MAX_BYTES = 1048576;
+
+    // -- 1. Script source assertions: box constraint + pre-write guard ---
+
+    let scriptSrc;
+    try {
+      scriptSrc = readUtf8File(scriptPath);
+    } catch {
+      fail(id, `missing ${scriptPath}`);
+    }
+    if (!scriptSrc.includes(`width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true`)) {
+      fail(id, `${scriptPath} does not contain the literal box-constraint option set (width:2000, height:2000, fit:'inside', withoutEnlargement:true)`);
+    }
+    const throwIdx = scriptSrc.indexOf('Math.max(width, height) >');
+    if (throwIdx === -1) {
+      fail(id, `${scriptPath} does not contain a 'Math.max(width, height) >' threshold guard`);
+    }
+    const phase2Idx = scriptSrc.indexOf('// -- Phase 2:');
+    if (phase2Idx === -1) {
+      fail(id, `${scriptPath} does not mark a distinct '// -- Phase 2:' section`);
+    }
+    if (throwIdx > phase2Idx) {
+      fail(id, `${scriptPath}'s threshold guard (index ${throwIdx}) appears after the Phase 2 marker (index ${phase2Idx}) -- it must validate before any write`);
+    }
+    const writeCallRegex = /\b(mkdirSync|writeFileSync)\s*\(|\.toFile\s*\(/g;
+    let wcMatch;
+    while ((wcMatch = writeCallRegex.exec(scriptSrc)) !== null) {
+      if (wcMatch.index < phase2Idx) {
+        fail(id, `${scriptPath} calls '${wcMatch[0]}' at index ${wcMatch.index}, before the Phase 2 marker (index ${phase2Idx}) -- Phase 1 must perform zero filesystem writes`);
+      }
+    }
+
+    // -- 2. package.json registers extract:photos -------------------------
+
+    let pkg;
+    try {
+      pkg = JSON.parse(readUtf8File(pkgJsonPath));
+    } catch (e) {
+      fail(id, `could not parse package.json: ${e}`);
+    }
+    if (!pkg.scripts || pkg.scripts['extract:photos'] === undefined) {
+      fail(id, `package.json scripts is missing 'extract:photos'`);
+    }
+
+    // -- 3. Independently re-derive expected source photos from the mockup
+
+    const mockup = readUtf8File(mockupPath);
+    function extractPhotosForAddress(address) {
+      const marker = `address:"${address}"`;
+      const aIdx = mockup.indexOf(marker);
+      if (aIdx === -1) fail(id, `could not find '${marker}' in ${mockupPath}`);
+      const pIdx = mockup.indexOf('photos:[', aIdx);
+      if (pIdx === -1) fail(id, `could not find 'photos:[' after '${marker}'`);
+      const start = pIdx + 'photos:['.length;
+      const end = mockup.indexOf(']', start);
+      const slice = mockup.slice(start, end);
+      return [...slice.matchAll(/data:image\/jpeg;base64,([A-Za-z0-9+/=]+)/g)].map((m) => m[1]);
+    }
+    const marengoSourcePhotos = extractPhotosForAddress('614 E Marengo St');
+    const brownSourcePhotos = extractPhotosForAddress('2734 Brown Street');
+    if (marengoSourcePhotos.length !== 6) {
+      fail(id, `mockup independently parses to ${marengoSourcePhotos.length} Marengo photos, expected exactly 6`);
+    }
+    if (brownSourcePhotos.length !== 5) {
+      fail(id, `mockup independently parses to ${brownSourcePhotos.length} Brown Street photos, expected exactly 5`);
+    }
+
+    // -- helpers used by the destructive proofs below ---------------------
+
+    function hashFile(path) {
+      return createHash('sha256').update(readFileSync(path)).digest('hex');
+    }
+    function snapshotDir(dir) {
+      if (!existsSync(dir)) return {};
+      const out = {};
+      for (const f of listDir(dir)) {
+        out[f] = hashFile(join(dir, f));
+      }
+      return out;
+    }
+    function snapshotsEqual(a, b) {
+      const aKeys = Object.keys(a).sort();
+      const bKeys = Object.keys(b).sort();
+      if (aKeys.length !== bKeys.length) return false;
+      for (let i = 0; i < aKeys.length; i += 1) {
+        if (aKeys[i] !== bKeys[i] || a[aKeys[i]] !== b[bKeys[i]]) return false;
+      }
+      return true;
+    }
+    function runExtractScript(envOverrides) {
+      const result = spawnSync('node', ['scripts/extract-mockup-photos.mjs'], {
+        cwd: toplevel,
+        encoding: 'utf8',
+        timeout: 60000,
+        env: { ...process.env, ...envOverrides },
+      });
+      return result;
+    }
+    function assertNoTmpFiles() {
+      const base = join(toplevel, 'public', 'uploads', 'properties');
+      if (!existsSync(base)) return;
+      const tmpFiles = walkFiles(base).filter((p) => p.endsWith('.tmp'));
+      if (tmpFiles.length > 0) {
+        throw new Error(`found leftover .tmp files after a failed extraction run: ${tmpFiles.join(', ')}`);
+      }
+    }
+
+    // -- 4. Real, committed photos as the known-good baseline -------------
+
+    const goodMarengoSnapshot = snapshotDir(marengoDir);
+    const goodBrownSnapshot = snapshotDir(brownDir);
+    if (Object.keys(goodMarengoSnapshot).length !== 6) {
+      fail(id, `${marengoDir} has ${Object.keys(goodMarengoSnapshot).length} files before the destructive proofs even start, expected exactly 6`);
+    }
+    if (Object.keys(goodBrownSnapshot).length !== 5) {
+      fail(id, `${brownDir} has ${Object.keys(goodBrownSnapshot).length} files before the destructive proofs even start, expected exactly 5`);
+    }
+
+    // -- 5 & 6. Destructive proofs. Every assertion in this block throws a
+    // plain Error rather than calling fail() -- restoration below always
+    // runs in a normal catch block first, so a failed proof can never exit
+    // the process while the working tree is left mutated.
+
+    let destructiveFailure = null;
+    try {
+      // -- 5. Threshold-lowering proves the pre-write guard actually fires.
+      // At 200px every real photo exceeds the ceiling, so photo-01 throws
+      // first and nothing should be written -- directories stay exactly as
+      // the good baseline found them.
+      const thresholdResult = runExtractScript({ OAK_MAX_EDGE_PX: '200' });
+      if (thresholdResult.status === 0) {
+        throw new Error(`extraction script exited 0 with OAK_MAX_EDGE_PX=200 -- the pre-write threshold guard did not fire`);
+      }
+      if (!snapshotsEqual(snapshotDir(marengoDir), goodMarengoSnapshot)) {
+        throw new Error(`${marengoDir} changed after the threshold-200 failed run -- the guard let a write through`);
+      }
+      if (!snapshotsEqual(snapshotDir(brownDir), goodBrownSnapshot)) {
+        throw new Error(`${brownDir} changed after the threshold-200 failed run -- the guard let a write through`);
+      }
+      assertNoTmpFiles();
+
+      // -- 6. Forced middle-photo failure proves atomicity: emptying both
+      // output directories, forcing only Marengo photo-03 (global index 2)
+      // to fail, must leave the directories exactly as emptied -- zero .jpg
+      // and zero .tmp -- not a prefix of the correct output.
+      rmSync(marengoDir, { recursive: true, force: true });
+      rmSync(brownDir, { recursive: true, force: true });
+
+      const forcedFailResult = runExtractScript({ OAK_FORCE_FAIL_INDEX: '2' });
+      if (forcedFailResult.status === 0) {
+        throw new Error(`extraction script exited 0 with OAK_FORCE_FAIL_INDEX=2 -- the forced middle-photo failure did not propagate`);
+      }
+      const emptyMarengoSnapshot = snapshotDir(marengoDir);
+      const emptyBrownSnapshot = snapshotDir(brownDir);
+      if (Object.keys(emptyMarengoSnapshot).length !== 0) {
+        throw new Error(`${marengoDir} contains ${Object.keys(emptyMarengoSnapshot).length} file(s) after the forced middle-photo failure, expected 0 (photo-01/02 must not survive)`);
+      }
+      if (Object.keys(emptyBrownSnapshot).length !== 0) {
+        throw new Error(`${brownDir} contains ${Object.keys(emptyBrownSnapshot).length} file(s) after the forced middle-photo failure, expected 0`);
+      }
+      assertNoTmpFiles();
+    } catch (err) {
+      destructiveFailure = err;
+    }
+
+    // -- Restoration: unconditional, plain sequential code -- runs whether
+    // or not the destructive proofs above threw, and BEFORE any fail() call.
+    const restoreResult = runExtractScript({});
+    const restoredMarengoSnapshot = snapshotDir(marengoDir);
+    const restoredBrownSnapshot = snapshotDir(brownDir);
+
+    if (destructiveFailure) {
+      fail(id, destructiveFailure.message);
+    }
+    if (restoreResult.status !== 0) {
+      fail(id, `restoration run (no env overrides) exited ${restoreResult.status} after the destructive proofs -- output directories may be incomplete:\n${(restoreResult.stdout || '').slice(-1000)}\n${(restoreResult.stderr || '').slice(-1000)}`);
+    }
+    if (!snapshotsEqual(restoredMarengoSnapshot, goodMarengoSnapshot)) {
+      fail(id, `${marengoDir} did not restore to its pre-test byte-identical state after the destructive proofs -- re-running is not idempotent`);
+    }
+    if (!snapshotsEqual(restoredBrownSnapshot, goodBrownSnapshot)) {
+      fail(id, `${brownDir} did not restore to its pre-test byte-identical state after the destructive proofs -- re-running is not idempotent`);
+    }
+
+    // -- 7. Independent dimension / upscale / aspect-ratio / size proofs --
+    // against the now-restored, known-good output.
+
+    async function validateOutputDir(dir, sourcePhotos) {
+      const jpgFiles = listDir(dir).filter((f) => f.endsWith('.jpg')).sort();
+      for (let i = 0; i < jpgFiles.length; i += 1) {
+        const filePath = join(dir, jpgFiles[i]);
+        const bytes = statSync(filePath).size;
+        if (bytes > MAX_BYTES) {
+          fail(id, `${filePath} is ${bytes} bytes, exceeds the ${MAX_BYTES}-byte budget`);
+        }
+        const outMeta = await sharp(filePath).metadata();
+        const longestEdge = Math.max(outMeta.width, outMeta.height);
+        if (longestEdge > MAX_EDGE) {
+          fail(id, `${filePath} longest edge ${longestEdge}px exceeds the ${MAX_EDGE}px ceiling`);
+        }
+        const sourceBuffer = Buffer.from(sourcePhotos[i], 'base64');
+        const srcMeta = await sharp(sourceBuffer).metadata();
+        if (outMeta.width > srcMeta.width || outMeta.height > srcMeta.height) {
+          fail(id, `${filePath} (${outMeta.width}x${outMeta.height}) exceeds its source (${srcMeta.width}x${srcMeta.height}) -- upscaled`);
+        }
+        const srcRatio = srcMeta.width / srcMeta.height;
+        const outRatio = outMeta.width / outMeta.height;
+        if (Math.abs(outRatio - srcRatio) * outMeta.height >= 1) {
+          fail(id, `${filePath} aspect ratio drifted from its source beyond the 1px tolerance`);
+        }
+      }
+    }
+    await validateOutputDir(marengoDir, marengoSourcePhotos);
+    await validateOutputDir(brownDir, brownSourcePhotos);
+
+    // -- 8. Content file assertions -----------------------------------------
+
+    if (!existsSync(brownFile)) {
+      fail(id, `missing ${brownFile}`);
+    }
+    const brownContent = readUtf8File(brownFile);
+    const marengoContent = readUtf8File(marengoFile);
+
+    if (!brownContent.includes('2734 Brown Street')) {
+      fail(id, `${brownFile} does not contain '2734 Brown Street'`);
+    }
+
+    function countLineExact(text, line) {
+      return text.split(/\r\n|\n/).filter((l) => l.trim() === line).length;
+    }
+    if (countLineExact(brownContent, 'downPayment: 3000') !== 1) {
+      fail(id, `${brownFile} does not contain exactly one 'downPayment: 3000' line`);
+    }
+    if (countLineExact(brownContent, 'monthlyPayment: 1250') !== 1) {
+      fail(id, `${brownFile} does not contain exactly one 'monthlyPayment: 1250' line`);
+    }
+    if (countLineExact(brownContent, 'beds: 4') !== 1) {
+      fail(id, `${brownFile} does not set 'beds: 4'`);
+    }
+    if (countLineExact(brownContent, 'baths: 1') !== 1) {
+      fail(id, `${brownFile} does not set 'baths: 1'`);
+    }
+    if (/^sqft:/m.test(brownContent)) {
+      fail(id, `${brownFile} sets 'sqft' -- square footage is unknown for Brown Street and must be left unset`);
+    }
+    if (/^location:/m.test(brownContent)) {
+      fail(id, `${brownFile} sets 'location' -- D-16 requires it stay unset in this phase`);
+    }
+
+    for (const field of ['beds', 'baths', 'sqft']) {
+      if (new RegExp(`^${field}:`, 'm').test(marengoContent)) {
+        fail(id, `${marengoFile} sets '${field}' -- Marengo supplies no beds/baths/sqft and all three must stay unset`);
+      }
+    }
+    if (/^location:/m.test(marengoContent)) {
+      fail(id, `${marengoFile} sets 'location' -- D-16 requires it stay unset in this phase`);
+    }
+
+    // Filename stem <-> frontmatter slug binding.
+    const brownSlugMatch = brownContent.match(/^slug:\s*"([^"]+)"/m);
+    if (!brownSlugMatch || brownSlugMatch[1] !== '2734-brown-st') {
+      fail(id, `${brownFile}'s frontmatter slug does not equal its filename stem '2734-brown-st'`);
+    }
+    const marengoSlugMatch = marengoContent.match(/^slug:\s*"([^"]+)"/m);
+    if (!marengoSlugMatch || marengoSlugMatch[1] !== '614-e-marengo-st') {
+      fail(id, `${marengoFile}'s frontmatter slug does not equal its filename stem '614-e-marengo-st'`);
+    }
+
+    // -- 9. Build succeeds with both real entries --------------------------
+
+    clearAstroCache(toplevel);
+    const build = runBuild(toplevel);
+    if (build.timedOut) {
+      fail(id, `npm run build timed out`);
+    }
+    if (build.status !== 0) {
+      fail(id, `npm run build exited ${build.status}:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+    }
+
+    pass(id);
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -1103,4 +1422,15 @@ if (!checkId || !Object.prototype.hasOwnProperty.call(checks, checkId)) {
   process.exit(1);
 }
 
-checks[checkId](checkId);
+// Checks are ordinarily synchronous and call process.exit() themselves via
+// pass()/fail(). photos-resized is async (it awaits sharp metadata reads),
+// so a returned thenable is caught here -- an uncaught rejection would
+// otherwise hang or exit with Node's generic unhandled-rejection code
+// instead of a clear FAIL line naming this check.
+const result = checks[checkId](checkId);
+if (result && typeof result.then === 'function') {
+  result.catch((err) => {
+    process.stderr.write(`FAIL ${checkId}: unexpected error: ${err && err.stack ? err.stack : err}\n`);
+    process.exit(1);
+  });
+}
