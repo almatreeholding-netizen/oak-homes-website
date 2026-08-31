@@ -1,0 +1,96 @@
+---
+// src/pages/homes/index.astro
+//
+// The Browse Homes grid -- one grid per D-05, never separate sections or a
+// filtered view. Sorted Available before Pending before Sold so Sold homes
+// stay visible at the bottom as social proof rather than being hidden. Ties
+// within a status group break by publishDate descending, then by slug
+// ascending as a final tiebreak, so the order is total and stable across
+// rebuilds -- both migrated homes are Available on day one and would
+// otherwise tie on the primary key alone.
+import { getCollection } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+import PropertyCard from '../../components/PropertyCard.astro';
+
+const STATUS_RANK: Record<'Available' | 'Pending' | 'Sold', number> = {
+  Available: 0,
+  Pending: 1,
+  Sold: 2,
+};
+
+const properties = await getCollection('properties');
+
+const sorted = [...properties].sort((a, b) => {
+  const rankDiff = STATUS_RANK[a.data.status] - STATUS_RANK[b.data.status];
+  if (rankDiff !== 0) return rankDiff;
+
+  const dateDiff = b.data.publishDate.getTime() - a.data.publishDate.getTime();
+  if (dateDiff !== 0) return dateDiff;
+
+  // Final tiebreak: slug ascending. entry.id equals entry.data.slug by the
+  // build-time assertion in src/pages/homes/[slug].astro, so comparing id
+  // here is comparing the slug.
+  if (a.id < b.id) return -1;
+  if (a.id > b.id) return 1;
+  return 0;
+});
+---
+
+<Layout
+  title="Browse Homes"
+  description="Browse owner-financed homes for sale in Flint, MI -- no bank, no credit check, clear written terms."
+>
+  {sorted.length === 0 ? (
+    <section class="empty-state">
+      <h1 class="empty-heading">No Homes Available Right Now</h1>
+      <p>Check back soon &mdash; new homes are added regularly. Or call us at (217) 269-0003 to ask what's coming next.</p>
+    </section>
+  ) : (
+    <section class="homes-grid">
+      <h1 class="grid-heading">Available Homes</h1>
+      <div class="grid">
+        {sorted.map((entry) => <PropertyCard entry={entry} />)}
+      </div>
+    </section>
+  )}
+</Layout>
+
+<style>
+  .homes-grid,
+  .empty-state {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px 24px;
+  }
+
+  /* "Available Homes" is a section heading (Heading role, 24px/600), not a
+     page-Display title -- UI-SPEC Typography usage notes call this literal
+     phrase out under the Heading role. This scoped rule overrides
+     Layout.astro's global bare `h1 { font-size: 36px }` rule, which Astro's
+     scoped-style attribute selector wins over on specificity. */
+  .grid-heading,
+  .empty-heading {
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 600;
+    line-height: 1.2;
+    margin: 0;
+  }
+
+  .empty-state p {
+    max-width: 60ch;
+    margin: 16px 0 0;
+  }
+
+  /* Mobile-first grid: a single column is all that fits at phone width by
+     construction (minmax(280px, 1fr) inside a narrow container), wrapping
+     to more columns as space allows -- no media query needed, no fixed
+     maximum card count, no horizontal scroll (UI-SPEC populated/overflow
+     E1). */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 24px;
+    margin-top: 24px;
+  }
+</style>
