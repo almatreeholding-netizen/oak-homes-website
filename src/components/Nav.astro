@@ -1,0 +1,138 @@
+---
+// src/components/Nav.astro
+//
+// The 7-item primary nav (UI-SPEC ## UI Considerations, surface E4). Horizontal
+// at >=768px with an accent active-indicator on the current page; below 768px
+// it collapses into a hamburger drawer where all 7 items stack vertically with
+// no truncation and no horizontal scroll. The drawer toggle is one of only two
+// client-side JS islands this project has (SKELETON.md) -- implemented here as
+// the smallest possible inline script driving a checkbox-controlled drawer, no
+// framework, no hydration directive needed.
+//
+// Item set is fixed at build time -- UI-SPEC's empty/partial/zero-one-many
+// rows for E4 all rest on that fact. Several destinations (About, Learn,
+// Schedule, Contact) are created by later plans; the nav ships complete now
+// because it is a layout concern, and plan 01-05 verifies no internal link
+// 404s.
+const items = [
+  { href: '/', label: 'Home' },
+  { href: '/homes', label: 'Browse Homes' },
+  { href: '/how-it-works', label: 'How It Works' },
+  { href: '/about', label: 'About' },
+  { href: '/learn', label: 'Learn' },
+  { href: '/schedule', label: 'Schedule a Showing' },
+  { href: '/contact', label: 'Contact' },
+];
+
+const currentPath = Astro.url.pathname;
+
+function isActive(href: string): boolean {
+  if (href === '/') return currentPath === '/';
+  return currentPath === href || currentPath.startsWith(href + '/');
+}
+---
+
+<nav class="nav" aria-label="Primary">
+  <input type="checkbox" id="nav-drawer-toggle" class="nav-drawer-toggle" />
+  <label for="nav-drawer-toggle" class="nav-hamburger" aria-label="Open menu">
+    <span aria-hidden="true">&#9776;</span>
+  </label>
+  <ul class="nav-list">
+    {items.map((item) => (
+      <li>
+        <a
+          href={item.href}
+          class="nav-link"
+          aria-current={isActive(item.href) ? 'page' : undefined}
+          data-active={isActive(item.href) ? 'true' : 'false'}
+        >
+          {item.label}
+        </a>
+      </li>
+    ))}
+  </ul>
+</nav>
+
+<style>
+  .nav {
+    position: relative;
+  }
+
+  .nav-drawer-toggle {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .nav-hamburger {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    cursor: pointer;
+    font-size: 24px;
+    color: var(--color-ink);
+  }
+
+  .nav-list {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 24px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .nav-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--color-ink);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+
+  .nav-link[data-active='true'] {
+    border-bottom-color: var(--color-accent);
+  }
+
+  /* Below 768px: hide the horizontal list behind a hamburger drawer. All 7
+     items stack vertically, full width, with no truncation and no
+     horizontal scroll (UI-SPEC E4 overflow row). */
+  @media (max-width: 767px) {
+    .nav-hamburger {
+      display: inline-flex;
+    }
+
+    .nav-list {
+      display: none;
+      position: absolute;
+      top: 44px;
+      left: 0;
+      right: 0;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+      background: var(--color-cream-deep);
+      padding: 8px 0;
+      z-index: 20;
+    }
+
+    .nav-drawer-toggle:checked ~ .nav-list {
+      display: flex;
+    }
+
+    .nav-link {
+      width: 100%;
+      padding: 8px 16px;
+      white-space: normal;
+    }
+  }
+</style>

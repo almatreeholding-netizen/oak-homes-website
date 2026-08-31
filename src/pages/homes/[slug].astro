@@ -1,0 +1,176 @@
+---
+// src/pages/homes/[slug].astro
+//
+// Dynamic property route generated from the properties collection. The route
+// parameter is keyed on each entry's `id` (its filename stem) -- never on the
+// frontmatter `slug` field -- so a route collision is impossible by
+// construction: two files cannot share one filename (SKELETON.md invariant
+// 6; RESEARCH.md assumption A1, untested duplicate-getStaticPaths-param
+// behaviour). The `slug` field still exists for Phase 2's CMS form to bind
+// to, so an explicit assertion below keeps the two from silently drifting
+// apart.
+import { getCollection, type CollectionEntry } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+
+export async function getStaticPaths() {
+  const properties = await getCollection('properties');
+
+  return properties.map((entry) => {
+    // The flat `*.md` loader glob (src/content.config.ts) means entry.id is
+    // ordinarily a bare filename stem with no path separator. If a future
+    // widening of that glob ever lets a nested file through, catch it here
+    // with a message that names nesting as the cause -- a nested id like
+    // "archive/x" can never satisfy the lowercase-hyphen slug regex, so
+    // without this branch the failure below would misreport it as slug
+    // drift when the real problem is the file's location.
+    if (entry.id.includes('/')) {
+      throw new Error(
+        `Property entry id "${entry.id}" contains a path separator, meaning its file sits in a ` +
+          `subdirectory of src/content/properties/. The flat "*.md" loader glob is chosen ` +
+          `specifically to exclude nesting -- this is not slug drift. Move the file to the top ` +
+          `level of src/content/properties/.`,
+      );
+    }
+
+    if (entry.id !== entry.data.slug) {
+      throw new Error(
+        `Property filename "src/content/properties/${entry.id}.md" (entry id "${entry.id}") does ` +
+          `not equal its frontmatter slug "${entry.data.slug}". A home's permanent URL and the file ` +
+          `that claims it must never drift apart -- fix the filename or the slug field so they match.`,
+      );
+    }
+
+    return {
+      params: { slug: entry.id },
+      props: { entry },
+    };
+  });
+}
+
+interface Props {
+  entry: CollectionEntry<'properties'>;
+}
+
+const { entry } = Astro.props;
+const { title, address, status, downPayment, monthlyPayment, beds, baths, sqft, description, features, photos } =
+  entry.data;
+
+const money = (n: number) => `$${n.toLocaleString('en-US')}`;
+const detail = (n: number | undefined, unit: string) => (n === undefined ? 'Call for details' : `${n}${unit}`);
+---
+
+<Layout title={title} description={description}>
+  <article class="property">
+    <header class="property-header">
+      <h1>{address}</h1>
+      <span class={`status-badge status-${status.toLowerCase()}`}>{status}</span>
+    </header>
+
+    <div class="property-terms">
+      <p class="price">
+        <span class="price-figure">{money(downPayment)}</span> down &middot;
+        <span class="price-figure">{money(monthlyPayment)}</span>/mo
+      </p>
+      <p class="specs">
+        {detail(beds, ' bed')} &middot; {detail(baths, ' bath')} &middot; {detail(sqft, ' sqft')}
+      </p>
+    </div>
+
+    <!--
+      Zero-photo placeholder frame. `photos` defaults to an empty array
+      (UI-SPEC E3 empty-state row: a designed branded placeholder, not a
+      missing state). This task ships the frame only; plan 01-02 Task 4
+      fills it with the dual-leaf mark at reduced opacity once BrandMark.astro
+      exists.
+    -->
+    <div class="gallery-region">
+      {photos.length === 0 && (
+        <div class="gallery-placeholder" role="img" aria-label="No photos available yet">
+          <p>Photos coming soon</p>
+        </div>
+      )}
+    </div>
+
+    <div class="property-description">
+      <p>{description}</p>
+    </div>
+
+    {features.length > 0 && (
+      <ul class="features">
+        {features.map((feature) => <li>{feature}</li>)}
+      </ul>
+    )}
+  </article>
+</Layout>
+
+<style>
+  .property {
+    max-width: 64ch;
+    margin: 0 auto;
+    padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .property-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 8px;
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 4px;
+  }
+
+  .status-available {
+    background-color: var(--color-accent);
+    color: var(--color-ink);
+  }
+
+  .status-pending {
+    background-color: var(--color-pending);
+    color: var(--color-ink);
+  }
+
+  .status-sold {
+    background-color: var(--color-ink);
+    color: var(--color-cream);
+  }
+
+  .price {
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--color-price-gold);
+  }
+
+  .price-figure {
+    color: var(--color-price-gold);
+  }
+
+  .specs {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .gallery-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 240px;
+    background-color: var(--color-cream-deep);
+    color: var(--color-ink);
+    font-size: 14px;
+  }
+
+  .features {
+    padding-left: 20px;
+  }
+</style>
