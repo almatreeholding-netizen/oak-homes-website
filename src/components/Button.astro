@@ -1,0 +1,69 @@
+---
+// src/components/Button.astro
+//
+// A plain anchor -- never a <button type="submit"> -- because every CTA in
+// this project navigates or dials, and none of them submits async (UI-SPEC
+// ## UI Considerations, surface E6: no loading/error/pending state exists to
+// design for). `href` covers both internal links and `tel:` numbers.
+//
+// variant="accent": brand-yellow fill. Accent is a fill colour only, never
+// text on cream (UI-SPEC ## Color) -- text on this variant is ink, which
+// passes contrast against #FFD053.
+// variant="ghost": ink outline on cream/transparent, for secondary actions.
+//
+// 44px minimum hit area (UI-SPEC ## Spacing Scale exception) is met by
+// padding the visible control, not by resizing it off the 8pt scale.
+interface Props {
+  href: string;
+  variant?: 'accent' | 'ghost';
+  class?: string;
+}
+
+const { href, variant = 'accent', class: className = '' } = Astro.props;
+---
+
+<a href={href} class:list={['btn', `btn-${variant}`, className]}>
+  <slot />
+</a>
+
+<style>
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 8px 24px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-decoration: none;
+    border-radius: 4px;
+    border: 2px solid transparent;
+    white-space: nowrap;
+  }
+
+  .btn:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+
+  .btn-accent {
+    background-color: var(--color-accent);
+    color: var(--color-ink);
+  }
+
+  .btn-accent:hover {
+    background-color: var(--color-accent-hover);
+  }
+
+  .btn-ghost {
+    background-color: transparent;
+    color: var(--color-ink);
+    border-color: var(--color-ink);
+  }
+
+  .btn-ghost:hover {
+    background-color: var(--color-cream-deep);
+  }
+</style>

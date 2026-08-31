@@ -16,7 +16,7 @@
 // An unrecognised check id is itself a failure, listing known ids, so a typo
 // can never be mistaken for a pass.
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, writeFileSync, renameSync, existsSync, rmSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -91,6 +91,56 @@ function fail(checkId, reason) {
 function pass(checkId) {
   process.stdout.write(`PASS ${checkId}\n`);
   process.exit(0);
+}
+
+/**
+ * Recursively list every file (not directory) under `dir`, as absolute
+ * paths. Manual walk rather than fs.readdirSync's `recursive` option so
+ * behaviour does not depend on a specific Node minor version's Dirent
+ * shape.
+ */
+function walkFiles(dir) {
+  let out = [];
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    const st = statSync(p);
+    if (st.isDirectory()) {
+      out = out.concat(walkFiles(p));
+    } else {
+      out.push(p);
+    }
+  }
+  return out;
+}
+
+/**
+ * Run `npm run build` in `cwd`. Uses shell:true with a single fixed command
+ * string (same rationale as scaffold-clean: npm.cmd cannot be spawned
+ * directly via spawnSync's argv form on Windows) and an explicit timeout so
+ * a genuine hang is reported, not silently blocked forever.
+ */
+function runBuild(cwd, { timeout = 180000 } = {}) {
+  const result = spawnSync('npm run build', { cwd, encoding: 'utf8', timeout, shell: true });
+  const timedOut = Boolean(result.error && result.error.code === 'ETIMEDOUT');
+  return {
+    status: result.status,
+    timedOut,
+    stdout: result.stdout || '',
+    stderr: result.stderr || '',
+  };
+}
+
+/**
+ * Astro's content layer persists a cache at node_modules/.astro/data-store.json
+ * across builds. When a test in this file mutates or removes a content file
+ * between builds, a stale cache entry from a *previous* build can survive the
+ * "Synced content" step and be handed to getStaticPaths anyway -- observed as
+ * a build that logs "No files found matching ..." and then still throws the
+ * previous run's slug-drift error. Deleting the cache before every mutation
+ * round-trip build forces a fresh, disk-accurate content sync each time.
+ */
+function clearAstroCache(cwd) {
+  rmSync(join(cwd, 'node_modules', '.astro'), { recursive: true, force: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -482,6 +532,356 @@ const checks = {
     }
     if (buildResult.status !== 0) {
       fail(id, `npm run build exited ${buildResult.status}:\n${(buildResult.stdout || '').slice(-2000)}\n${(buildResult.stderr || '').slice(-2000)}`);
+    }
+
+    pass(id);
+  },
+
+  /**
+   * Task 3: the tracer proper. One real home, read from one real content
+   * file, validated by one real schema, rendered through one shared layout,
+   * into static HTML. Covers 01-02-PLAN.md Task 3's full acceptance-criteria
+   * list: content-schema location, flat loader glob, id<->slug drift
+   * assertion (including the nesting-vs-drift message branch), schema
+   * validation actually firing on malformed content, the Equal Housing line
+   * on every built page and nowhere under src/content/, brand-token and
+   * self-hosted-font presence in built CSS/HTML, DOM ordering of the phone
+   * CTA ahead of <main>, and the settings-phone-required guarantee.
+   */
+  'skeleton-e2e': (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const distDir = join(toplevel, 'dist');
+    const distHomesDir = join(toplevel, 'dist', 'homes');
+    const propertiesDir = join(toplevel, 'src', 'content', 'properties');
+    const propertyFile = join(propertiesDir, '614-e-marengo-st.md');
+    const settingsPath = join(toplevel, 'src', 'content', 'settings.json');
+    const contentConfigPath = join(toplevel, 'src', 'content.config.ts');
+    const legacyContentConfigPath = join(toplevel, 'src', 'content', 'config.ts');
+    const slugRoutePath = join(toplevel, 'src', 'pages', 'homes', '[slug].astro');
+
+    const equalHousingSentence =
+      'Equal Housing Opportunity. Owner financing is subject to a written agreement; this is not a commitment to lend or an offer of credit.';
+
+    // -- Static, no-build source assertions -----------------------------
+
+    if (!existsSync(contentConfigPath)) {
+      fail(id, `missing ${contentConfigPath} — schema must live at the Astro 5+ location`);
+    }
+    if (existsSync(legacyContentConfigPath)) {
+      fail(id, `${legacyContentConfigPath} exists — the Astro 4-era location is silently ignored and must be absent`);
+    }
+
+    const contentConfig = readUtf8File(contentConfigPath);
+    if (contentConfig.includes('**/*.md')) {
+      fail(id, `${contentConfigPath} contains the recursive glob '**/*.md' — every collection's loader pattern must be the flat '*.md'`);
+    }
+    if (!contentConfig.includes(`pattern: '*.md'`) && !contentConfig.includes(`pattern: "*.md"`)) {
+      fail(id, `${contentConfigPath} does not contain a flat '*.md' loader pattern`);
+    }
+    // The literal 'min(1)' is expected to appear once, in prose, in the
+    // comment documenting RESEARCH.md Pattern 1's superseded line (plan's
+    // own <!-- planner-discipline-allow: min(1) --> marker). What must be
+    // absent is `.min(1)` attached to the *code* declaration of the photos
+    // field itself — check that field's declaration line in isolation.
+    const photosFieldMatch = contentConfig.match(/photos:\s*z\.array\(z\.string\(\)\)[^,\n]*/);
+    if (!photosFieldMatch) {
+      fail(id, `${contentConfigPath} does not declare a 'photos: z.array(z.string())...' field`);
+    }
+    if (!photosFieldMatch[0].includes('.default([])')) {
+      fail(id, `${contentConfigPath}'s photos field declaration does not contain '.default([])': "${photosFieldMatch[0]}"`);
+    }
+    if (photosFieldMatch[0].includes('.min(1)')) {
+      fail(id, `${contentConfigPath}'s photos field declaration contains '.min(1)' — this supersedes RESEARCH.md Pattern 1, must be default-empty instead: "${photosFieldMatch[0]}"`);
+    }
+
+    if (!existsSync(slugRoutePath)) {
+      fail(id, `missing ${slugRoutePath}`);
+    }
+    const slugRoute = readUtf8File(slugRoutePath);
+    if (!slugRoute.includes('entry.id')) {
+      fail(id, `${slugRoutePath} does not reference entry.id as the route-parameter source`);
+    }
+    if (!slugRoute.includes('entry.data.slug')) {
+      fail(id, `${slugRoutePath} does not contain an equality assertion against entry.data.slug`);
+    }
+    if (!slugRoute.includes(`entry.id.includes('/')`) && !slugRoute.includes('entry.id.includes("/")')) {
+      fail(id, `${slugRoutePath} does not branch on entry.id containing a path separator`);
+    }
+    if (!/subdirector/i.test(slugRoute)) {
+      fail(id, `${slugRoutePath}'s nesting branch does not name the subdirectory cause in its error message`);
+    }
+
+    // -- Backups for every file this check temporarily mutates ----------
+
+    const originalPropertyFile = readUtf8File(propertyFile);
+    const originalSettings = readUtf8File(settingsPath);
+
+    function restoreAll() {
+      writeFileSync(propertyFile, originalPropertyFile, 'utf8');
+      writeFileSync(settingsPath, originalSettings, 'utf8');
+    }
+
+    // Any failure from here on must restore mutated files before exiting,
+    // so a failed run doesn't leave the working tree corrupted.
+    try {
+      // -- 1. Baseline build ---------------------------------------------
+
+      clearAstroCache(toplevel);
+      let build = runBuild(toplevel);
+      if (build.timedOut) {
+        fail(id, `baseline npm run build timed out`);
+      }
+      if (build.status !== 0) {
+        fail(id, `baseline npm run build exited ${build.status}:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+      }
+
+      const propertyPagePath = join(distHomesDir, '614-e-marengo-st', 'index.html');
+      if (!existsSync(propertyPagePath)) {
+        fail(id, `missing ${propertyPagePath} after a successful baseline build`);
+      }
+      const propertyPage = readUtf8File(propertyPagePath);
+
+      if (!propertyPage.includes('614 E Marengo St')) {
+        fail(id, `${propertyPagePath} does not contain '614 E Marengo St'`);
+      }
+      if (!propertyPage.includes('3,000')) {
+        fail(id, `${propertyPagePath} does not contain a rendering of the 3,000 down payment`);
+      }
+      if (!propertyPage.includes('950')) {
+        fail(id, `${propertyPagePath} does not contain a rendering of the 950 monthly payment`);
+      }
+      if (!propertyPage.includes('Bonus room')) {
+        fail(id, `${propertyPagePath} does not contain the Marengo feature bullet 'Bonus room' — content did not drive the page`);
+      }
+
+      const equalHousingCountOnPropertyPage = countOccurrences(propertyPage, equalHousingSentence);
+      if (equalHousingCountOnPropertyPage !== 1) {
+        fail(id, `${propertyPagePath} contains ${equalHousingCountOnPropertyPage} occurrences of the Equal Housing sentence, expected exactly 1`);
+      }
+
+      if (!propertyPage.includes('lang="en"')) {
+        fail(id, `${propertyPagePath} does not contain lang="en"`);
+      }
+      if (!propertyPage.includes('(217) 269-0003')) {
+        fail(id, `${propertyPagePath} does not contain the display phone string '(217) 269-0003'`);
+      }
+      if (!propertyPage.includes('tel:+12172690003')) {
+        fail(id, `${propertyPagePath} does not contain 'tel:+12172690003'`);
+      }
+      const telIndex = propertyPage.indexOf('tel:+12172690003');
+      const mainIndex = propertyPage.indexOf('<main');
+      if (mainIndex === -1) {
+        fail(id, `${propertyPagePath} does not contain a <main element`);
+      }
+      if (!(telIndex >= 0 && telIndex < mainIndex)) {
+        fail(id, `${propertyPagePath}: first 'tel:+12172690003' occurrence (index ${telIndex}) does not precede first '<main' occurrence (index ${mainIndex})`);
+      }
+
+      const integrationsSlotCount = countOccurrences(propertyPage, 'integrations-slot');
+      if (integrationsSlotCount !== 1) {
+        fail(id, `${propertyPagePath} contains ${integrationsSlotCount} occurrences of the integrations-slot marker, expected exactly 1`);
+      }
+
+      // -- 2. Every built .html page carries the legal line, exactly once --
+
+      const htmlFiles = walkFiles(distDir).filter((p) => p.endsWith('.html'));
+      if (htmlFiles.length === 0) {
+        fail(id, `no .html files found under ${distDir}`);
+      }
+      let filesWithSentence = 0;
+      for (const f of htmlFiles) {
+        const content = readUtf8File(f);
+        const count = countOccurrences(content, equalHousingSentence);
+        if (count !== 1) {
+          fail(id, `${f} contains ${count} occurrences of the Equal Housing sentence, expected exactly 1`);
+        }
+        filesWithSentence += 1;
+      }
+      if (filesWithSentence !== htmlFiles.length) {
+        fail(id, `${filesWithSentence} of ${htmlFiles.length} built .html files carry the Equal Housing sentence — expected all of them`);
+      }
+
+      // -- 3. Legal copy is absent from every file under src/content/ -----
+
+      const contentDir = join(toplevel, 'src', 'content');
+      const contentFiles = walkFiles(contentDir);
+      for (const f of contentFiles) {
+        let text;
+        try {
+          text = readUtf8File(f);
+        } catch {
+          continue; // non-text asset; not a concern for this grep
+        }
+        if (text.includes('Equal Housing Opportunity')) {
+          fail(id, `${f} under src/content/ contains 'Equal Housing Opportunity' — legal copy must exist only in .astro files (DESIGN-03)`);
+        }
+      }
+
+      // -- 4. Built CSS / brand-token / font assertions --------------------
+
+      let foundAccent = false;
+      let foundPriceGold = false;
+      for (const f of htmlFiles.concat(walkFiles(distDir).filter((p) => p.endsWith('.css')))) {
+        const content = readUtf8File(f);
+        // Lightning CSS (Tailwind v4's minifier) lowercases hex literals in
+        // its output, so this must be a case-insensitive match — the source
+        // @theme block in global.css is uppercase, but the built asset is not.
+        const upper = content.toUpperCase();
+        if (upper.includes('#FFD053')) foundAccent = true;
+        if (upper.includes('#A87E24')) foundPriceGold = true;
+        if (upper.includes('F6C84C')) {
+          fail(id, `${f} contains the superseded design-spec yellow estimate F6C84C`);
+        }
+        if (content.includes('fonts.googleapis.com')) {
+          fail(id, `${f} references fonts.googleapis.com — fonts must be self-hosted`);
+        }
+      }
+      if (!foundAccent) {
+        fail(id, `no built file under dist/ contains the accent value #FFD053`);
+      }
+      if (!foundPriceGold) {
+        fail(id, `no built file under dist/ contains the price-gold value #A87E24`);
+      }
+
+      // -- 5. dist/homes/*/index.html count == properties .md file count --
+
+      function countPropertyPages() {
+        if (!existsSync(distHomesDir)) return 0;
+        let count = 0;
+        for (const name of readdirSync(distHomesDir, { withFileTypes: true })) {
+          if (!name.isDirectory()) continue; // excludes dist/homes/index.html itself
+          const candidate = join(distHomesDir, name.name, 'index.html');
+          if (existsSync(candidate)) count += 1;
+        }
+        return count;
+      }
+      const mdFileCount = readdirSync(propertiesDir).filter((f) => f.endsWith('.md')).length;
+      const pagesCount = countPropertyPages();
+      if (pagesCount !== mdFileCount) {
+        fail(id, `dist/homes/*/index.html count is ${pagesCount}, expected ${mdFileCount} (one per src/content/properties/*.md file)`);
+      }
+
+      // -- 6. Zero-photo entry builds (Marengo's photos are already []) ---
+
+      if (!originalPropertyFile.includes('photos: []')) {
+        fail(id, `src/content/properties/614-e-marengo-st.md does not have an empty photos array — the baseline build above no longer exercises the zero-photo state`);
+      }
+      // The baseline build in step 1 already proved this exact state builds
+      // clean, so no separate mutation/build round-trip is needed here.
+
+      // -- 7. Schema validation actually fires (status enum + downPayment) --
+
+      writeFileSync(
+        propertyFile,
+        originalPropertyFile
+          .replace('status: "Available"', 'status: "NotARealStatus"')
+          .replace('downPayment: 3000', 'downPayment: "not-a-number"'),
+        'utf8',
+      );
+      clearAstroCache(toplevel);
+      build = runBuild(toplevel);
+      writeFileSync(propertyFile, originalPropertyFile, 'utf8');
+      if (build.timedOut) {
+        fail(id, `malformed-status/downPayment build timed out`);
+      }
+      if (build.status === 0) {
+        fail(id, `malformed-status/downPayment build exited 0 — schema validation did not fire`);
+      }
+      const malformedOutput = (build.stdout + build.stderr).toLowerCase();
+      if (!malformedOutput.includes('status')) {
+        fail(id, `malformed-status/downPayment build's error output does not name 'status'`);
+      }
+      if (!malformedOutput.includes('downpayment')) {
+        fail(id, `malformed-status/downPayment build's error output does not name 'downPayment'`);
+      }
+      clearAstroCache(toplevel);
+      build = runBuild(toplevel);
+      if (build.status !== 0) {
+        fail(id, `build after reverting the malformed-status/downPayment mutation exited ${build.status} — expected 0`);
+      }
+
+      // -- 8. Slug encoding enforced ---------------------------------------
+
+      writeFileSync(
+        propertyFile,
+        originalPropertyFile.replace('slug: "614-e-marengo-st"', 'slug: "614-E Marengo St"'),
+        'utf8',
+      );
+      clearAstroCache(toplevel);
+      build = runBuild(toplevel);
+      writeFileSync(propertyFile, originalPropertyFile, 'utf8');
+      if (build.timedOut) {
+        fail(id, `invalid-slug-encoding build timed out`);
+      }
+      if (build.status === 0) {
+        fail(id, `invalid-slug-encoding build exited 0 — the slug regex did not fire on an uppercase+space value`);
+      }
+
+      // -- 9. Filename <-> frontmatter slug drift is asserted --------------
+
+      writeFileSync(
+        propertyFile,
+        originalPropertyFile.replace('slug: "614-e-marengo-st"', 'slug: "614-e-marengo-street"'),
+        'utf8',
+      );
+      clearAstroCache(toplevel);
+      build = runBuild(toplevel);
+      writeFileSync(propertyFile, originalPropertyFile, 'utf8');
+      if (build.timedOut) {
+        fail(id, `slug-drift build timed out`);
+      }
+      if (build.status === 0) {
+        fail(id, `slug-drift build exited 0 — the entry.id === entry.data.slug assertion did not fire`);
+      }
+      const driftOutput = build.stdout + build.stderr;
+      if (!driftOutput.includes('614-e-marengo-st') || !driftOutput.includes('614-e-marengo-street')) {
+        fail(id, `slug-drift build's error output does not name both the filename ('614-e-marengo-st') and the frontmatter value ('614-e-marengo-street')`);
+      }
+
+      // -- 10. Empty properties collection builds, produces zero pages -----
+
+      const movedPath = join(toplevel, '.tmp-moved-property.md.bak');
+      renameSync(propertyFile, movedPath);
+      clearAstroCache(toplevel);
+      build = runBuild(toplevel);
+      renameSync(movedPath, propertyFile);
+      if (build.timedOut) {
+        fail(id, `empty-collection build timed out`);
+      }
+      if (build.status !== 0) {
+        fail(id, `empty-collection build exited ${build.status} — a properties collection with zero entries must still build`);
+      }
+      if (countPropertyPages() !== 0) {
+        fail(id, `empty-collection build produced ${countPropertyPages()} dist/homes/*/index.html files, expected 0`);
+      }
+
+      // -- 11. Settings phone is required -----------------------------------
+
+      writeFileSync(settingsPath, originalSettings.replace('"phone": "(217) 269-0003"', '"phone": ""'), 'utf8');
+      clearAstroCache(toplevel);
+      build = runBuild(toplevel);
+      writeFileSync(settingsPath, originalSettings, 'utf8');
+      if (build.timedOut) {
+        fail(id, `blank-phone build timed out`);
+      }
+      if (build.status === 0) {
+        fail(id, `blank-phone build exited 0 — the settings phone field must be required non-empty`);
+      }
+
+      // -- 12. Final rebuild — leave the tree in a known-good built state --
+
+      clearAstroCache(toplevel);
+      build = runBuild(toplevel);
+      if (build.status !== 0) {
+        fail(id, `final rebuild after all mutation round-trips exited ${build.status}, expected 0`);
+      }
+    } finally {
+      restoreAll();
     }
 
     pass(id);
