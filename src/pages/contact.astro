@@ -1,0 +1,101 @@
+---
+// src/pages/contact.astro
+//
+// Contact page shell. Exists in Phase 1 for two structural reasons: it is
+// the seventh nav destination, and every property Inquire button links here
+// with a ?property=<slug> query parameter (read by Phase 3's prefill
+// script, LEAD-02 -- not built here). Without this page the nav and every
+// Inquire button would 404.
+//
+// The phone CTA is the working contact route today. The Zoho web-to-lead
+// embed itself (LEAD-01) and the query-parameter prefill script (LEAD-02)
+// are explicitly out of scope this phase -- this page must contain no
+// <form> element and no external <script src=...> tag (01-04-PLAN.md
+// Task 2).
+import { getEntry } from 'astro:content';
+import Layout from '../layouts/Layout.astro';
+import Button from '../components/Button.astro';
+
+const settings = await getEntry('settings', 'main');
+if (!settings) {
+  throw new Error('contact.astro: settings entry "main" not found in src/content/settings.json');
+}
+const { phone, phoneHref, email } = settings.data;
+---
+
+<Layout title="Contact" description="Get in touch with Oak Homes about a home or how owner financing works.">
+  <section class="contact">
+    <h1>Get in Touch</h1>
+    <p class="lead">
+      Questions about a home or how it works? Call us and we'll get right back to you.
+    </p>
+
+    <div class="phone-card">
+      <p class="phone-eyebrow">Reach us directly</p>
+      <a class="phone-line" href={phoneHref}>{phone}</a>
+      <div class="phone-buttons">
+        <Button href={phoneHref} variant="accent">Call {phone}</Button>
+        <Button href={`mailto:${email}`} variant="ghost">Email Us</Button>
+      </div>
+    </div>
+
+    <!--
+      Phase 3 (LEAD-01) embeds the Zoho web-to-lead form here. Phase 3's
+      prefill script (LEAD-02) also reads the ?property= query parameter
+      Inquire buttons pass to this page and sets the form's hidden property
+      field before it renders. Neither the embed nor the script exists yet
+      -- this comment marks where they land.
+    -->
+  </section>
+</Layout>
+
+<style>
+  .contact {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 32px 24px 64px;
+  }
+
+  .contact .lead {
+    font-size: 19px;
+    line-height: 1.5;
+    max-width: 70ch;
+  }
+
+  .phone-card {
+    background-color: var(--color-cream-deep);
+    border-radius: 16px;
+    padding: 32px 24px;
+    margin-top: 24px;
+    text-align: center;
+  }
+
+  .phone-eyebrow {
+    margin: 0 0 6px;
+    color: var(--color-ink);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .phone-line {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    font-family: var(--font-display);
+    font-size: 36px;
+    font-weight: 600;
+    color: var(--color-ink);
+    text-decoration: none;
+  }
+
+  .phone-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+</style>
