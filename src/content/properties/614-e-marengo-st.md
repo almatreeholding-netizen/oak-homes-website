@@ -14,6 +14,12 @@ features:
   - "Detached garage"
   - "Spacious living + dining area"
   - "Covered front porch"
-photos: []
+photos:
+  - "/uploads/properties/614-e-marengo-st/photo-01.jpg"
+  - "/uploads/properties/614-e-marengo-st/photo-02.jpg"
+  - "/uploads/properties/614-e-marengo-st/photo-03.jpg"
+  - "/uploads/properties/614-e-marengo-st/photo-04.jpg"
+  - "/uploads/properties/614-e-marengo-st/photo-05.jpg"
+  - "/uploads/properties/614-e-marengo-st/photo-06.jpg"
 publishDate: 2026-08-30
 ---
