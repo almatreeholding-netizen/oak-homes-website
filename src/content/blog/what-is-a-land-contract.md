@@ -21,12 +21,12 @@ legal title transfer to you.
 It's a straightforward way to buy on contract, with clear terms, a down payment, and predictable
 monthly payments, all written plainly.
 
-## How it's different from renting
+## What the agreement spells out
 
-With a land contract, your monthly payments are building toward ownership, not just covering the
-cost of a place to stay for another month. The agreement spells out a down payment, a monthly
-payment amount, and a length of time -- all agreed up front, in plain language, with no hidden
-steps.
+The written agreement sets out a down payment, a monthly payment amount, and a length of time --
+all agreed up front, in plain language, with no hidden steps. It also lays out when and how the
+deed and legal title transfer once the contract is completed as agreed. Read it closely before
+you sign; it's the document that governs your specific terms.
 
 ## What you'll typically need
 
