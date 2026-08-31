@@ -54,6 +54,7 @@ const equalHousingLine =
     <title>{title} | Oak Homes</title>
   </head>
   <body>
+    <a href="#main-content" class="skip-link">Skip to content</a>
     <header class="site-header">
       <a href="/" class="brand-mark">
         <BrandMark variant="ink" alt="Oak Homes — From Rent to Roots" />
@@ -62,7 +63,7 @@ const equalHousingLine =
       <a href={phoneHref} class="header-phone">{phone}</a>
     </header>
 
-    <main>
+    <main id="main-content" tabindex="-1">
       <slot />
     </main>
 
@@ -129,9 +130,52 @@ const equalHousingLine =
   a {
     color: inherit;
   }
+
+  /* Uniform focus-visible ring across every plain-text link that does not
+     already declare its own (Button.astro, PropertyCard.astro, and the
+     Gallery's own controls declare their own scoped :focus-visible rules;
+     this covers the header/footer/nav links that share this global style
+     block instead). */
+  a:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+
+  /* main is the skip-link's target; tabindex="-1" makes it programmatically
+     focusable without adding it to the normal Tab order, and this rule
+     suppresses the default focus ring browsers would otherwise draw around
+     the whole content region when focus lands there. */
+  main:focus-visible {
+    outline: none;
+  }
 </style>
 
 <style>
+  /* First focusable element on every page (DESIGN-04). Off-screen until
+     focused, then pinned to the top-left corner above everything else so a
+     keyboard user can see it land. */
+  .skip-link {
+    position: absolute;
+    top: -48px;
+    left: 8px;
+    z-index: 200;
+    padding: 8px 16px;
+    background-color: var(--color-cream);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: top 0.1s ease-in-out;
+  }
+
+  .skip-link:focus-visible {
+    top: 8px;
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+
   .site-header {
     display: flex;
     align-items: center;

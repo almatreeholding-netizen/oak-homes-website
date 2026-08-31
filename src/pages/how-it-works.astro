@@ -147,7 +147,7 @@ const steps = [
   }
 
   .hero .lead {
-    font-size: 19px;
+    font-size: 16px;
     line-height: 1.5;
     max-width: 70ch;
   }
@@ -179,8 +179,11 @@ const steps = [
     position: absolute;
     left: 0;
     top: 6px;
-    color: var(--color-accent-hover);
-    font-weight: 700;
+    /* var(--color-accent-hover) measured 1.7:1 against this panel's
+       cream-deep background -- below the 3:1 WCAG 1.4.11 non-text-contrast
+       minimum for a meaningful graphic. Ink token passes at 15.9:1. */
+    color: var(--color-ink);
+    font-weight: 600;
     font-size: 18px;
   }
 
@@ -233,9 +236,9 @@ const steps = [
 
   .contact-line {
     font-family: var(--font-display);
-    font-size: 26px;
-    color: var(--color-accent);
-    font-weight: 700;
+    font-size: 24px;
+    color: var(--color-cream);
+    font-weight: 600;
     text-decoration: none;
     display: inline-block;
     margin-bottom: 16px;
@@ -255,7 +258,8 @@ const steps = [
 
   .legal-note {
     margin: 20px 0 0;
-    font-size: 12px;
+    font-size: 14px;
+    font-weight: 400;
     color: #a49e91;
   }
 </style>

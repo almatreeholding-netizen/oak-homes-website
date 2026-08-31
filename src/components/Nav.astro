@@ -5,9 +5,12 @@
 // at >=768px with an accent active-indicator on the current page; below 768px
 // it collapses into a hamburger drawer where all 7 items stack vertically with
 // no truncation and no horizontal scroll. The drawer toggle is one of only two
-// client-side JS islands this project has (SKELETON.md) -- implemented here as
-// the smallest possible inline script driving a checkbox-controlled drawer, no
-// framework, no hydration directive needed.
+// client-side JS islands this project has (SKELETON.md) -- a real <button>
+// (not a checkbox+label hack, which is invisible to Tab and cannot trap focus
+// or answer Escape) driving a small inline script: opens the drawer, traps
+// Tab within the toggle plus the 7 links, closes on Escape, and returns focus
+// to the toggle button on close (01-05-PLAN.md Task 1 -- the same contract
+// gallery-lightbox.ts implements for the photo lightbox).
 //
 // Item set is fixed at build time -- UI-SPEC's empty/partial/zero-one-many
 // rows for E4 all rest on that fact. Several destinations (About, Learn,
@@ -32,12 +35,18 @@ function isActive(href: string): boolean {
 }
 ---
 
-<nav class="nav" aria-label="Primary">
-  <input type="checkbox" id="nav-drawer-toggle" class="nav-drawer-toggle" />
-  <label for="nav-drawer-toggle" class="nav-hamburger" aria-label="Open menu">
+<nav class="nav" aria-label="Primary" data-nav>
+  <button
+    type="button"
+    class="nav-hamburger"
+    data-nav-toggle
+    aria-label="Open menu"
+    aria-expanded="false"
+    aria-controls="nav-drawer"
+  >
     <span aria-hidden="true">&#9776;</span>
-  </label>
-  <ul class="nav-list">
+  </button>
+  <ul class="nav-list" id="nav-drawer" data-nav-list>
     {items.map((item) => (
       <li>
         <a
@@ -53,15 +62,78 @@ function isActive(href: string): boolean {
   </ul>
 </nav>
 
+<script>
+  // Keyboard contract (matches gallery-lightbox.ts's): Escape closes, focus
+  // moves into the drawer's first link on open, Tab is trapped among the
+  // toggle button plus the 7 links while open, and focus returns to the
+  // toggle on close. Only meaningful below 768px, where the toggle is
+  // visible and the list is hidden until opened -- at >=768px the toggle is
+  // display:none (CSS below), so it is never focusable and this script's
+  // open() path is never reached there.
+  function initNav(root: HTMLElement): void {
+    const toggle = root.querySelector<HTMLButtonElement>('[data-nav-toggle]');
+    const list = root.querySelector<HTMLUListElement>('[data-nav-list]');
+    if (!toggle || !list) return;
+
+    const links = Array.from(list.querySelectorAll<HTMLAnchorElement>('a'));
+    const focusable = [toggle, ...links];
+    let isOpen = false;
+
+    function onKeydown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        close();
+        return;
+      }
+      if (event.key === 'Tab') {
+        const activeIndex = focusable.indexOf(document.activeElement as HTMLElement);
+        event.preventDefault();
+        const nextIndex = event.shiftKey
+          ? (activeIndex - 1 + focusable.length) % focusable.length
+          : (activeIndex + 1) % focusable.length;
+        focusable[nextIndex]?.focus();
+      }
+    }
+
+    function open(): void {
+      isOpen = true;
+      toggle!.setAttribute('aria-expanded', 'true');
+      toggle!.setAttribute('aria-label', 'Close menu');
+      list!.setAttribute('data-open', 'true');
+      document.addEventListener('keydown', onKeydown);
+      links[0]?.focus();
+    }
+
+    function close(options: { returnFocus?: boolean } = {}): void {
+      const { returnFocus = true } = options;
+      isOpen = false;
+      toggle!.setAttribute('aria-expanded', 'false');
+      toggle!.setAttribute('aria-label', 'Open menu');
+      list!.removeAttribute('data-open');
+      document.removeEventListener('keydown', onKeydown);
+      if (returnFocus) toggle!.focus();
+    }
+
+    toggle.addEventListener('click', () => {
+      if (isOpen) close({ returnFocus: false });
+      else open();
+    });
+
+    // A resize past the desktop breakpoint hides the toggle and shows the
+    // list unconditionally via CSS -- drop any lingering open/trap state so
+    // a later resize back to mobile does not resume with a stale trap.
+    const desktopQuery = window.matchMedia('(min-width: 768px)');
+    desktopQuery.addEventListener('change', (event) => {
+      if (event.matches && isOpen) close({ returnFocus: false });
+    });
+  }
+
+  document.querySelectorAll<HTMLElement>('[data-nav]').forEach(initNav);
+</script>
+
 <style>
   .nav {
     position: relative;
-  }
-
-  .nav-drawer-toggle {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
   }
 
   .nav-hamburger {
@@ -70,9 +142,17 @@ function isActive(href: string): boolean {
     justify-content: center;
     width: 44px;
     height: 44px;
+    padding: 0;
+    border: 0;
+    background: none;
     cursor: pointer;
     font-size: 24px;
     color: var(--color-ink);
+  }
+
+  .nav-hamburger:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
   }
 
   .nav-list {
@@ -97,6 +177,11 @@ function isActive(href: string): boolean {
     text-decoration: none;
     border-bottom: 2px solid transparent;
     white-space: nowrap;
+  }
+
+  .nav-link:focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
   }
 
   .nav-link[data-active='true'] {
@@ -125,7 +210,7 @@ function isActive(href: string): boolean {
       z-index: 20;
     }
 
-    .nav-drawer-toggle:checked ~ .nav-list {
+    .nav-list[data-open='true'] {
       display: flex;
     }
 
