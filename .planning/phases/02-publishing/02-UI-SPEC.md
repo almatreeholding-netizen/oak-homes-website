@@ -1,7 +1,7 @@
 ---
 phase: 2
 slug: publishing
-status: draft
+status: verified
 shadcn_initialized: false
 preset: none
 created: 2026-08-31
@@ -184,11 +184,11 @@ Sveltia CMS itself is not a shadcn/UI-component registry (it is a CDN-loaded adm
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: FLAG (non-blocking — recommend adding an explicit focal-point statement for the cheat-sheet page title; implementable as written)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-08-31
