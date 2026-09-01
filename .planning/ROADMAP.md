@@ -84,12 +84,12 @@ Plans:
   4. The assistant can edit an existing home and flip its status to Pending or Sold from a dropdown, publish a Learn post with title, rich text, and optional cover image, and change site settings (phone, email, social links, homepage intro) — each change visible on the live site after Publish.
   5. The assistant holds a one-page illustrated cheat-sheet covering photo pre-resizing (~2000px), the publish-and-verify loop, and what to do when something looks wrong.
 
-**Plans**: 3 plans
+**Plans**: 1/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Tracer: one thin path through the whole publishing pipe — netlify.toml, the `/admin` shell, and the Homes collection committed, then hosting + GitHub OAuth stood up by hand (D-21), then one real status flip published from the panel and watched onto the live site
+- [x] 02-01-PLAN.md — Tracer: one thin path through the whole publishing pipe — netlify.toml, the `/admin` shell, and the Homes collection committed, then hosting + GitHub OAuth stood up by hand (D-21), then one real status flip published from the panel and watched onto the live site
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -162,7 +162,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 5/5 | Complete    | 2026-08-31 |
-| 2. Publishing | 0/3 | Planned | - |
+| 2. Publishing | 1/3 | In Progress|  |
 | 3. Integrations | 0/TBD | Not started | - |
 | 4. Launch | 0/TBD | Not started | - |
 
