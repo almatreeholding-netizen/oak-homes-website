@@ -84,7 +84,24 @@ Plans:
   4. The assistant can edit an existing home and flip its status to Pending or Sold from a dropdown, publish a Learn post with title, rich text, and optional cover image, and change site settings (phone, email, social links, homepage intro) — each change visible on the live site after Publish.
   5. The assistant holds a one-page illustrated cheat-sheet covering photo pre-resizing (~2000px), the publish-and-verify loop, and what to do when something looks wrong.
 
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — Tracer: one thin path through the whole publishing pipe — netlify.toml, the `/admin` shell, and the Homes collection committed, then hosting + GitHub OAuth stood up by hand (D-21), then one real status flip published from the panel and watched onto the live site
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md — Expansion: the Learn Posts and Site Settings collections, including the settings wrapper-key fix, with the settings/cover-image/cleared-URL failure modes each proven by a build that really runs
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 02-03-PLAN.md — The assistant's cheat-sheet at `/publishing-guide` (D-19/D-20), the GitHub access decision (D-18), and the phase's real acceptance test: the assistant publishes a home unaided while someone watches without helping
+
+**UI hint**: yes (02-UI-SPEC.md — cheat-sheet page design plus the locked CMS field/validation copy; the Sveltia admin panel itself is not restyled)
+
+**Human-in-the-loop checkpoints** *(five, all genuinely unautomatable)*: `netlify` and `gh` are both absent from this machine — re-verified during planning, not merely inherited from research — and GitHub exposes no API for creating an OAuth App at all. 02-01 carries a bundled `checkpoint:human-action` for the Netlify site + OAuth App + provider install (branching live on D-21 rather than assuming a site exists) and a `checkpoint:human-verify` for the end-to-end publish proof. 02-02 carries the RESEARCH A1 spot-check — the one place it can be learned whether Sveltia really writes the `main` wrapper. 02-03 carries the deferred D-18 decision (which GitHub identity the assistant uses, Write access only) and the unaided-publish handoff.
 
 **Carried-forward notes**:
 
@@ -145,7 +162,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 5/5 | Complete    | 2026-08-31 |
-| 2. Publishing | 0/TBD | Not started | - |
+| 2. Publishing | 0/3 | Planned | - |
 | 3. Integrations | 0/TBD | Not started | - |
 | 4. Launch | 0/TBD | Not started | - |
 
