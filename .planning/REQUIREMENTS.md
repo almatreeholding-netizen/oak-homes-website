@@ -6,31 +6,31 @@ Source: approved design spec (`docs/specs/2026-08-28-oak-homes-website-design.md
 
 ### Browsing (BROWSE)
 
-- [ ] **BROWSE-01**: Visitor can browse all homes on a listing page showing cover photo, address, status badge (Available/Pending/Sold), down payment, and monthly payment per card
-- [ ] **BROWSE-02**: Visitor can open each home's own page at a shareable URL (`/homes/<slug>`)
-- [ ] **BROWSE-03**: Homepage shows brand intro, 3-step overview, and featured available homes
+- [x] **BROWSE-01**: Visitor can browse all homes on a listing page showing cover photo, address, status badge (Available/Pending/Sold), down payment, and monthly payment per card
+- [x] **BROWSE-02**: Visitor can open each home's own page at a shareable URL (`/homes/<slug>`)
+- [x] **BROWSE-03**: Homepage shows brand intro, 3-step overview, and featured available homes
 
 ### Property pages (PROP)
 
-- [ ] **PROP-01**: Property page shows a photo gallery (ordered, first photo = cover)
-- [ ] **PROP-02**: Property page shows terms (down/monthly), beds, baths, square footage, and rich description with feature bullets
+- [x] **PROP-01**: Property page shows a photo gallery (ordered, first photo = cover)
+- [x] **PROP-02**: Property page shows terms (down/monthly), beds, baths, square footage, and rich description with feature bullets
 - [ ] **PROP-03**: Property page shows a map pin of the home's location (Leaflet + OpenStreetMap, no paid API)
 - [ ] **PROP-04**: Property page can embed an optional video (YouTube/Facebook link)
 - [ ] **PROP-05**: Sharing a property URL on Facebook/Instagram shows a rich preview card (photo, address, terms) via OpenGraph tags
 
 ### Education & trust (EDU)
 
-- [ ] **EDU-01**: How It Works page explains land contracts in plain language (content ported from refined one-pager)
-- [ ] **EDU-02**: FAQ section answers trust questions ("Is this legit?", "Do I get the deed?", "What if I miss a payment?") — folded into How It Works page
-- [ ] **EDU-03**: About page introduces the company
-- [ ] **EDU-04**: Learn section publishes blog posts (index + per-post pages)
-- [ ] **EDU-05**: Schedule a Showing page presents the phone CTA (217) 269-0003
+- [x] **EDU-01**: How It Works page explains land contracts in plain language (content ported from refined one-pager)
+- [x] **EDU-02**: FAQ section answers trust questions ("Is this legit?", "Do I get the deed?", "What if I miss a payment?") — folded into How It Works page
+- [x] **EDU-03**: About page introduces the company
+- [x] **EDU-04**: Learn section publishes blog posts (index + per-post pages)
+- [x] **EDU-05**: Schedule a Showing page presents the phone CTA (217) 269-0003
 
 ### Lead capture (LEAD)
 
 - [ ] **LEAD-01**: Contact page embeds the existing Zoho web-to-lead form; submissions arrive in Zoho CRM as Leads tagged "Website Lead"
 - [ ] **LEAD-02**: Property Inquire buttons open the contact form with the property address pre-filled (custom URL-parameter script — not Zoho-native)
-- [ ] **LEAD-03**: Phone number is visible on every page (prominent on mobile)
+- [x] **LEAD-03**: Phone number is visible on every page (prominent on mobile)
 
 ### Admin panel (ADMIN)
 
@@ -43,19 +43,19 @@ Source: approved design spec (`docs/specs/2026-08-28-oak-homes-website-design.md
 
 ### Design & compliance (DESIGN)
 
-- [ ] **DESIGN-01**: Site ports mockup branding: yellow #F6C84C / ink #1A1A1A / warm cream, Lora + Inter, leaf logo, "From Rent to Roots"
-- [ ] **DESIGN-02**: Equal Housing Opportunity footer with refined legal wording is baked into the single shared layout (structurally on every page)
-- [ ] **DESIGN-03**: Legally-sensitive copy (land-contract wording) lives in code, not the CMS, and preserves the refined phrasing exactly
-- [ ] **DESIGN-04**: Site meets WCAG 2.1 AA basics: alt text, contrast, keyboard/screen-reader-friendly forms and navigation
-- [ ] **DESIGN-05**: Mobile-first responsive layout; pages are static pre-rendered HTML
-- [ ] **DESIGN-06**: Shared layout includes a marked integrations slot for future site-wide widgets (Phase 2 chat/popups)
+- [x] **DESIGN-01**: Site ports mockup branding: yellow #F6C84C / ink #1A1A1A / warm cream, Lora + Inter, leaf logo, "From Rent to Roots"
+- [x] **DESIGN-02**: Equal Housing Opportunity footer with refined legal wording is baked into the single shared layout (structurally on every page)
+- [x] **DESIGN-03**: Legally-sensitive copy (land-contract wording) lives in code, not the CMS, and preserves the refined phrasing exactly
+- [x] **DESIGN-04**: Site meets WCAG 2.1 AA basics: alt text, contrast, keyboard/screen-reader-friendly forms and navigation
+- [x] **DESIGN-05**: Mobile-first responsive layout; pages are static pre-rendered HTML
+- [x] **DESIGN-06**: Shared layout includes a marked integrations slot for future site-wide widgets (Phase 2 chat/popups)
 
 ### Infrastructure (INFRA)
 
 - [x] **INFRA-01**: Oak Homes GitHub account created (browser walkthrough with owner) and this computer connected to it
-- [ ] **INFRA-02**: Site source + content live in a private GitHub repo (single source of truth)
+- [x] **INFRA-02**: Site source + content live in a private GitHub repo (single source of truth)
 - [ ] **INFRA-03**: Netlify builds and deploys automatically on every commit (replacing zip-drag deploys)
-- [ ] **INFRA-04**: The two existing homes (614 E Marengo; Brown St — number confirmed 2734 vs 2437) are migrated with pre-resized photos
+- [x] **INFRA-04**: The two existing homes (614 E Marengo; Brown St — number confirmed 2734 vs 2437) are migrated with pre-resized photos
 
 ### Launch (LAUNCH)
 
@@ -87,38 +87,38 @@ Each v1 requirement maps to exactly one phase. Coverage: **36/36** — no orphan
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BROWSE-01 | Phase 1 — Foundation | Pending |
-| BROWSE-02 | Phase 1 — Foundation | Pending |
-| BROWSE-03 | Phase 1 — Foundation | Pending |
-| PROP-01 | Phase 1 — Foundation | Pending |
-| PROP-02 | Phase 1 — Foundation | Pending |
+| BROWSE-01 | Phase 1 — Foundation | Complete |
+| BROWSE-02 | Phase 1 — Foundation | Complete |
+| BROWSE-03 | Phase 1 — Foundation | Complete |
+| PROP-01 | Phase 1 — Foundation | Complete |
+| PROP-02 | Phase 1 — Foundation | Complete |
 | PROP-03 | Phase 3 — Integrations | Pending |
 | PROP-04 | Phase 3 — Integrations | Pending |
 | PROP-05 | Phase 3 — Integrations | Pending |
-| EDU-01 | Phase 1 — Foundation | Pending |
-| EDU-02 | Phase 1 — Foundation | Pending |
-| EDU-03 | Phase 1 — Foundation | Pending |
-| EDU-04 | Phase 1 — Foundation | Pending |
-| EDU-05 | Phase 1 — Foundation | Pending |
+| EDU-01 | Phase 1 — Foundation | Complete |
+| EDU-02 | Phase 1 — Foundation | Complete |
+| EDU-03 | Phase 1 — Foundation | Complete |
+| EDU-04 | Phase 1 — Foundation | Complete |
+| EDU-05 | Phase 1 — Foundation | Complete |
 | LEAD-01 | Phase 3 — Integrations | Pending |
 | LEAD-02 | Phase 3 — Integrations | Pending |
-| LEAD-03 | Phase 1 — Foundation | Pending |
+| LEAD-03 | Phase 1 — Foundation | Complete |
 | ADMIN-01 | Phase 2 — Publishing | Pending |
 | ADMIN-02 | Phase 2 — Publishing | Pending |
 | ADMIN-03 | Phase 2 — Publishing | Pending |
 | ADMIN-04 | Phase 2 — Publishing | Pending |
 | ADMIN-05 | Phase 2 — Publishing | Pending |
 | ADMIN-06 | Phase 2 — Publishing | Pending |
-| DESIGN-01 | Phase 1 — Foundation | Pending |
-| DESIGN-02 | Phase 1 — Foundation | Pending |
-| DESIGN-03 | Phase 1 — Foundation | Pending |
-| DESIGN-04 | Phase 1 — Foundation | Pending |
-| DESIGN-05 | Phase 1 — Foundation | Pending |
-| DESIGN-06 | Phase 1 — Foundation | Pending |
+| DESIGN-01 | Phase 1 — Foundation | Complete |
+| DESIGN-02 | Phase 1 — Foundation | Complete |
+| DESIGN-03 | Phase 1 — Foundation | Complete |
+| DESIGN-04 | Phase 1 — Foundation | Complete |
+| DESIGN-05 | Phase 1 — Foundation | Complete |
+| DESIGN-06 | Phase 1 — Foundation | Complete |
 | INFRA-01 | Phase 1 — Foundation | Complete |
-| INFRA-02 | Phase 1 — Foundation | Pending |
+| INFRA-02 | Phase 1 — Foundation | Complete |
 | INFRA-03 | Phase 2 — Publishing | Pending |
-| INFRA-04 | Phase 1 — Foundation | Pending |
+| INFRA-04 | Phase 1 — Foundation | Complete |
 | LAUNCH-01 | Phase 4 — Launch | Pending |
 | LAUNCH-02 | Phase 4 — Launch | Pending |
 | LAUNCH-03 | Phase 4 — Launch | Pending |

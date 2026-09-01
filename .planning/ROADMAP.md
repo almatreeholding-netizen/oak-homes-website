@@ -13,7 +13,7 @@ The site is built along a dependency chain that cannot be reordered: a repo must
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Real repo, real site, both real homes — browsable end to end
+- [x] **Phase 1: Foundation** - Real repo, real site, both real homes — browsable end to end (completed 2026-08-31)
 - [ ] **Phase 2: Publishing** - Auto-deploy on every commit plus a form-based admin panel the assistant can use unaided
 - [ ] **Phase 3: Integrations** - Zoho leads with property prefill, map pins, video embeds, and rich social previews
 - [ ] **Phase 4: Launch** - ownwithoak.com live with Google Workspace email intact and leads verified in production
@@ -144,7 +144,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 5/5 | In Progress|  |
+| 1. Foundation | 5/5 | Complete    | 2026-08-31 |
 | 2. Publishing | 0/TBD | Not started | - |
 | 3. Integrations | 0/TBD | Not started | - |
 | 4. Launch | 0/TBD | Not started | - |
