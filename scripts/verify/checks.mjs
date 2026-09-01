@@ -3159,6 +3159,324 @@ const checks = {
 
     pass(id);
   },
+
+  /**
+   * 02-01 Task 1: prove the deploy config, admin shell, and Homes (properties)
+   * collection are wired correctly and stay in parity with the Phase-1 Zod
+   * schema. Node built-ins only -- public/admin/config.yml is parsed by hand
+   * with targeted line/regex extraction (not a generic YAML parser and not
+   * an npm dependency), scoped to the exact indentation conventions this
+   * repo's config.yml is written in.
+   */
+  'cms-tracer-config': (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const netlifyTomlPath = join(toplevel, 'netlify.toml');
+    const adminIndexPath = join(toplevel, 'public', 'admin', 'index.html');
+    const adminConfigPath = join(toplevel, 'public', 'admin', 'config.yml');
+    const pkgJsonPath = join(toplevel, 'package.json');
+    const contentConfigPath = join(toplevel, 'src', 'content.config.ts');
+    const adminDir = join(toplevel, 'public', 'admin');
+
+    // Locked verbatim from 02-UI-SPEC.md's Field Validation Messages row for
+    // `slug` -- hardcoded here the same way other checks in this file
+    // hardcode locked copy (e.g. skeleton-e2e's equalHousingSentence), not
+    // read from the planning doc at check-runtime.
+    const slugRejectionMessage =
+      'Lowercase letters, numbers, and single hyphens only (e.g. 614-e-marengo-st)';
+
+    // The 14-name field set this plan deliberately wires; videoUrl, location,
+    // ogImage exist in the Zod schema but are Phase-3-only and must be absent
+    // from the CMS this phase (RESEARCH.md Pitfall 4 / Pattern 2 notes).
+    const expectedFourteen = [
+      'title', 'address', 'slug', 'status', 'featured', 'downPayment',
+      'monthlyPayment', 'beds', 'baths', 'sqft', 'description', 'features',
+      'photos', 'publishDate',
+    ];
+    const phase3OnlyFields = new Set(['videoUrl', 'location', 'ogImage']);
+
+    // -- 1. netlify.toml ---------------------------------------------------
+
+    let netlifyToml;
+    try {
+      netlifyToml = readUtf8File(netlifyTomlPath);
+    } catch {
+      fail(id, `missing file: ${netlifyTomlPath}`);
+    }
+    let pkg;
+    try {
+      pkg = JSON.parse(readUtf8File(pkgJsonPath));
+    } catch (e) {
+      fail(id, `could not parse package.json: ${e}`);
+    }
+    if (!pkg.scripts || !Object.prototype.hasOwnProperty.call(pkg.scripts, 'build')) {
+      fail(id, `package.json has no 'build' script for netlify.toml to invoke`);
+    }
+    const commandMatch = netlifyToml.match(/command\s*=\s*"([^"]*)"/);
+    if (!commandMatch) {
+      fail(id, `${netlifyTomlPath} has no [build] command = "..." line`);
+    }
+    if (commandMatch[1] !== 'npm run build') {
+      fail(id, `${netlifyTomlPath} build command is '${commandMatch[1]}', expected 'npm run build' (package.json's 'build' script invoked through npm)`);
+    }
+    const publishMatch = netlifyToml.match(/publish\s*=\s*"([^"]*)"/);
+    if (!publishMatch) {
+      fail(id, `${netlifyTomlPath} has no [build] publish = "..." line`);
+    }
+    // Astro's static output directory defaults to 'dist' unless astro.config.mjs
+    // sets an explicit outDir -- this repo's astro.config.mjs (read at plan
+    // time) has no outDir override, so 'dist' is the expected publish dir.
+    const astroConfigPath = join(toplevel, 'astro.config.mjs');
+    let astroConfig = '';
+    try {
+      astroConfig = readUtf8File(astroConfigPath);
+    } catch {
+      fail(id, `missing file: ${astroConfigPath}`);
+    }
+    const expectedPublishDir = astroConfig.includes('outDir') ? null : 'dist';
+    if (expectedPublishDir && publishMatch[1] !== expectedPublishDir) {
+      fail(id, `${netlifyTomlPath} publish dir is '${publishMatch[1]}', expected '${expectedPublishDir}' (Astro's static output dir; astro.config.mjs has no outDir override)`);
+    }
+
+    // -- 2. public/admin/index.html ----------------------------------------
+
+    let adminIndex;
+    try {
+      adminIndex = readUtf8File(adminIndexPath);
+    } catch {
+      fail(id, `missing file: ${adminIndexPath}`);
+    }
+    if (!/<meta\s+name=["']robots["']\s+content=["']noindex["']\s*\/?>/i.test(adminIndex)) {
+      fail(id, `${adminIndexPath} does not contain a robots noindex meta tag`);
+    }
+    const scriptTagMatch = adminIndex.match(/<script\b[^>]*src=["']([^"']*sveltia-cms\.js)["'][^>]*>/i);
+    if (!scriptTagMatch) {
+      fail(id, `${adminIndexPath} has no <script> tag loading sveltia-cms.js`);
+    }
+    const scriptTag = scriptTagMatch[0];
+    const scriptSrc = scriptTagMatch[1];
+    if (/type=["']module["']/i.test(scriptTag)) {
+      fail(id, `${adminIndexPath}'s Sveltia script tag carries a type="module" attribute -- Sveltia's own docs warn this causes unexpected behavior`);
+    }
+    if (!/@sveltia\/cms@[^/]+\//.test(scriptSrc)) {
+      fail(id, `${adminIndexPath}'s Sveltia script src '${scriptSrc}' has no @-prefixed version specifier after the package name -- an unpinned CDN URL is a supply-chain risk (T-02-SC)`);
+    }
+
+    // -- 3. public/admin/config.yml ------------------------------------------
+
+    let configYml;
+    try {
+      configYml = readUtf8File(adminConfigPath);
+    } catch {
+      fail(id, `missing file: ${adminConfigPath}`);
+    }
+
+    // "Parses as YAML" -- hand-rolled line reader targeted at this file's own
+    // conventions (2-space indent steps, `key: value` pairs, `- ` list items),
+    // not a generic YAML grammar. A basic sanity pass: every non-blank,
+    // non-comment line either matches `key: value`/`key:` or a list-item
+    // form (`- ...`), and indentation is always a multiple of 2 spaces.
+    const ymlLines = configYml.split(/\r\n|\n/);
+    for (let i = 0; i < ymlLines.length; i++) {
+      const line = ymlLines[i];
+      if (line.trim() === '' || line.trim().startsWith('#')) continue;
+      const leadingSpaces = line.match(/^ */)[0].length;
+      if (leadingSpaces % 2 !== 0) {
+        fail(id, `${adminConfigPath} line ${i + 1} has an odd number of leading spaces (${leadingSpaces}) -- not valid YAML indentation: "${line}"`);
+      }
+      const trimmed = line.trim();
+      if (!/^-?\s*[a-zA-Z0-9_.{]/.test(trimmed)) {
+        fail(id, `${adminConfigPath} line ${i + 1} does not look like a YAML key or list item: "${line}"`);
+      }
+    }
+
+    const backendNameMatch = configYml.match(/^backend:\s*\n(?:.*\n)*?\s*name:\s*(\S+)/m);
+    const backendRepoMatch = configYml.match(/^backend:\s*\n(?:.*\n)*?\s*repo:\s*(\S+)/m);
+    const backendBranchMatch = configYml.match(/^backend:\s*\n(?:.*\n)*?\s*branch:\s*(\S+)/m);
+    if (!backendNameMatch || backendNameMatch[1] !== 'github') {
+      fail(id, `${adminConfigPath}'s backend.name is not 'github'`);
+    }
+    const originUrlResult = runGit(['remote', 'get-url', 'origin']);
+    if (!originUrlResult.ok) {
+      fail(id, `git remote get-url origin failed: ${originUrlResult.timedOut ? originUrlResult.reason : originUrlResult.stderr}`);
+    }
+    const originRepoMatch = originUrlResult.stdout.match(/github\.com[:/](.+?)(?:\.git)?$/);
+    const originRepo = originRepoMatch ? originRepoMatch[1] : null;
+    if (!backendRepoMatch || !originRepo || backendRepoMatch[1] !== originRepo) {
+      fail(id, `${adminConfigPath}'s backend.repo is '${backendRepoMatch ? backendRepoMatch[1] : '(missing)'}', expected to match origin '${originRepo}'`);
+    }
+    if (!backendBranchMatch || backendBranchMatch[1] !== 'main') {
+      fail(id, `${adminConfigPath}'s backend.branch is '${backendBranchMatch ? backendBranchMatch[1] : '(missing)'}', expected 'main'`);
+    }
+
+    // No OAuth broker override key -- Netlify's built-in provider needs none.
+    if (/\bbase_url\s*:/.test(configYml) || /\bauth_endpoint\s*:/.test(configYml)) {
+      fail(id, `${adminConfigPath} declares an OAuth broker override (base_url/auth_endpoint) -- Netlify's built-in provider requires their absence`);
+    }
+    // No editorial-workflow publish key -- a draft-and-merge step would
+    // defeat the ~2-minute publish criterion outright.
+    if (/\bpublish_mode\s*:/.test(configYml)) {
+      fail(id, `${adminConfigPath} declares a publish_mode key -- editorial workflow must not be enabled`);
+    }
+
+    // Extract the properties collection's top-level field names. Top-level
+    // field list items in this file are 6-space-indented `- ` entries (either
+    // inline `- { name: X, ... }` or block `- name: X`); nested sub-fields
+    // (e.g. a list widget's `field: { name: feature, ... }`) are not list
+    // items themselves and are excluded by this indentation+dash requirement.
+    const fieldLineRe = /^ {6}-\s*(?:\{\s*name:\s*([a-zA-Z0-9_]+)|name:\s*([a-zA-Z0-9_]+))/;
+    const cmsFieldNames = [];
+    for (const line of ymlLines) {
+      const m = line.match(fieldLineRe);
+      if (m) cmsFieldNames.push(m[1] || m[2]);
+    }
+    const cmsFieldSet = new Set(cmsFieldNames);
+    if (cmsFieldNames.length !== cmsFieldSet.size) {
+      fail(id, `${adminConfigPath}'s properties fields contain a duplicate name: ${cmsFieldNames.join(', ')}`);
+    }
+
+    // Direct assertion: the CMS field set is exactly the locked 14-name set.
+    const expectedFourteenSet = new Set(expectedFourteen);
+    const missingFromCms = expectedFourteen.filter((f) => !cmsFieldSet.has(f));
+    const extraInCms14 = cmsFieldNames.filter((f) => !expectedFourteenSet.has(f));
+    if (missingFromCms.length > 0 || extraInCms14.length > 0) {
+      fail(
+        id,
+        `${adminConfigPath}'s properties field set does not equal the locked 14-name set -- missing: [${missingFromCms.join(', ')}], unexpected: [${extraInCms14.join(', ')}]`,
+      );
+    }
+
+    // Schema-driven parity assertion (non-vacuous): extract every field name
+    // declared in content.config.ts's properties schema (all fields,
+    // including the Phase-3-only ones), subtract the known Phase-3-only set,
+    // and assert the remainder equals the CMS field set exactly. This is
+    // what makes an added/dropped/renamed field on either side fail the
+    // check by name, whether the drift originates in the schema or in
+    // config.yml.
+    let contentConfig;
+    try {
+      contentConfig = readUtf8File(contentConfigPath);
+    } catch {
+      fail(id, `missing file: ${contentConfigPath}`);
+    }
+    const propertiesStart = contentConfig.indexOf('const properties = defineCollection({');
+    if (propertiesStart === -1) {
+      fail(id, `${contentConfigPath} does not contain 'const properties = defineCollection({'`);
+    }
+    const schemaStart = contentConfig.indexOf('schema: z.object({', propertiesStart);
+    if (schemaStart === -1) {
+      fail(id, `${contentConfigPath} does not contain a 'schema: z.object({' block after the properties collection declaration`);
+    }
+    const schemaEnd = contentConfig.indexOf('\n  }),', schemaStart);
+    if (schemaEnd === -1) {
+      fail(id, `${contentConfigPath}: could not find the closing '  }),' for the properties schema block`);
+    }
+    const schemaBlock = contentConfig.slice(schemaStart, schemaEnd);
+    const schemaFieldRe = /^ {4}([a-zA-Z0-9_]+):\s*\S/gm;
+    const schemaFieldNames = [];
+    let sm;
+    while ((sm = schemaFieldRe.exec(schemaBlock)) !== null) {
+      schemaFieldNames.push(sm[1]);
+    }
+    if (schemaFieldNames.length === 0) {
+      fail(id, `${contentConfigPath}: extracted zero field names from the properties schema block -- extraction regex did not match this file's formatting`);
+    }
+    const expectedFromSchema = schemaFieldNames.filter((f) => !phase3OnlyFields.has(f));
+    const expectedFromSchemaSet = new Set(expectedFromSchema);
+    const missingFromCmsVsSchema = expectedFromSchema.filter((f) => !cmsFieldSet.has(f));
+    const extraInCmsVsSchema = cmsFieldNames.filter((f) => !expectedFromSchemaSet.has(f));
+    if (missingFromCmsVsSchema.length > 0 || extraInCmsVsSchema.length > 0) {
+      fail(
+        id,
+        `${adminConfigPath}'s properties field set does not equal the non-Phase-3 field set extracted from ${contentConfigPath}'s schema -- missing from CMS: [${missingFromCmsVsSchema.join(', ')}], unexpected in CMS: [${extraInCmsVsSchema.join(', ')}]`,
+      );
+    }
+    for (const f of phase3OnlyFields) {
+      if (!schemaFieldNames.includes(f)) {
+        fail(id, `${contentConfigPath}'s properties schema no longer declares Phase-3-only field '${f}' -- this check's Phase-3-omission list is stale`);
+      }
+      if (cmsFieldSet.has(f)) {
+        fail(id, `${adminConfigPath} declares Phase-3-only field '${f}' -- it must stay omitted from the CMS this phase`);
+      }
+    }
+
+    // slug field: pattern regex byte-identical to content.config.ts's
+    // slugPattern source, and rejection message byte-identical to UI-SPEC.
+    const slugPatternSourceMatch = contentConfig.match(/const slugPattern = \/(.+)\/;/);
+    if (!slugPatternSourceMatch) {
+      fail(id, `${contentConfigPath} does not contain a 'const slugPattern = /.../;' declaration`);
+    }
+    const slugPatternSource = slugPatternSourceMatch[1];
+    const cmsSlugFieldMatch = configYml.match(/name:\s*slug\s*\n(?:.*\n)*?\s*pattern:\s*\[\s*'([^']*)'\s*,\s*'([^']*)'\s*\]/);
+    if (!cmsSlugFieldMatch) {
+      fail(id, `${adminConfigPath}'s slug field has no 'pattern: [...]' validator`);
+    }
+    if (cmsSlugFieldMatch[1] !== slugPatternSource) {
+      fail(id, `${adminConfigPath}'s slug pattern regex '${cmsSlugFieldMatch[1]}' is not byte-identical to ${contentConfigPath}'s slugPattern source '${slugPatternSource}'`);
+    }
+    if (cmsSlugFieldMatch[2] !== slugRejectionMessage) {
+      fail(id, `${adminConfigPath}'s slug pattern rejection message '${cmsSlugFieldMatch[2]}' is not byte-identical to the locked UI-SPEC message '${slugRejectionMessage}'`);
+    }
+
+    // status: exactly Available/Pending/Sold, default Available.
+    const statusBlockMatch = configYml.match(/name:\s*status\s*\n(?:.*\n)*?\s*options:\s*\[([^\]]*)\]\s*\n\s*default:\s*'([^']*)'/);
+    if (!statusBlockMatch) {
+      fail(id, `${adminConfigPath}'s status field does not declare both 'options: [...]' and a 'default:'`);
+    }
+    const statusOptions = statusBlockMatch[1].split(',').map((s) => s.trim().replace(/^'|'$/g, ''));
+    const expectedStatusOptions = ['Available', 'Pending', 'Sold'];
+    if (statusOptions.length !== expectedStatusOptions.length || !expectedStatusOptions.every((o, idx) => statusOptions[idx] === o)) {
+      fail(id, `${adminConfigPath}'s status options are [${statusOptions.join(', ')}], expected exactly [${expectedStatusOptions.join(', ')}]`);
+    }
+    if (statusBlockMatch[2] !== 'Available') {
+      fail(id, `${adminConfigPath}'s status default is '${statusBlockMatch[2]}', expected 'Available'`);
+    }
+
+    // featured: boolean, default false.
+    const featuredLineMatch = configYml.match(/\{\s*name:\s*featured,[^}]*\}/);
+    if (!featuredLineMatch || !/widget:\s*boolean/.test(featuredLineMatch[0]) || !/default:\s*false/.test(featuredLineMatch[0])) {
+      fail(id, `${adminConfigPath}'s featured field is not a boolean widget defaulting to false`);
+    }
+
+    // features / photos: default to an empty list.
+    for (const listField of ['features', 'photos']) {
+      const re = new RegExp(`name:\\s*${listField}\\s*\\n(?:.*\\n)*?\\s*default:\\s*\\[\\]`);
+      if (!re.test(configYml)) {
+        fail(id, `${adminConfigPath}'s ${listField} field does not default to '[]'`);
+      }
+    }
+
+    // -- 4. No secret- or token-shaped value under public/admin/ ------------
+
+    const secretPatterns = [
+      /client_secret/i,
+      /clientSecret/,
+      /\bghp_[A-Za-z0-9]{20,}/,
+      /\bgho_[A-Za-z0-9]{20,}/,
+      /\bghu_[A-Za-z0-9]{20,}/,
+      /\bghs_[A-Za-z0-9]{20,}/,
+      /\bghr_[A-Za-z0-9]{20,}/,
+    ];
+    for (const f of walkFiles(adminDir)) {
+      let text;
+      try {
+        text = readUtf8File(f);
+      } catch {
+        continue; // non-text asset
+      }
+      for (const pattern of secretPatterns) {
+        if (pattern.test(text)) {
+          fail(id, `${f} contains a secret- or token-shaped value matching ${pattern} -- no credential may live under public/admin/`);
+        }
+      }
+    }
+
+    pass(id);
+  },
 };
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,47 @@
+backend:
+  name: github
+  repo: almatreeholding-netizen/oak-homes-website
+  branch: main
+
+media_folder: /public/uploads
+public_folder: /uploads
+
+collections:
+  - name: properties
+    label: Homes
+    folder: src/content/properties
+    create: true
+    slug: '{{fields.slug}}'
+    fields:
+      - { name: title, label: Title, widget: string }
+      - { name: address, label: Address, widget: string }
+      - name: slug
+        label: URL slug
+        widget: string
+        pattern: ['^[a-z0-9]+(-[a-z0-9]+)*$', 'Lowercase letters, numbers, and single hyphens only (e.g. 614-e-marengo-st)']
+        hint: 'This becomes the page URL. Match it exactly to what you want /homes/<slug> to be.'
+      - name: status
+        label: Status
+        widget: select
+        options: ['Available', 'Pending', 'Sold']
+        default: 'Available'
+      - { name: featured, label: 'Show on homepage', widget: boolean, default: false }
+      - { name: downPayment, label: 'Down Payment ($)', widget: number, value_type: int }
+      - { name: monthlyPayment, label: 'Monthly Payment ($)', widget: number, value_type: int }
+      - { name: beds, label: Bedrooms, widget: number, value_type: int, required: false }
+      - { name: baths, label: Bathrooms, widget: number, value_type: int, required: false }
+      - { name: sqft, label: 'Square Footage', widget: number, value_type: int, required: false }
+      - { name: description, label: Description, widget: text }
+      - name: features
+        label: Feature bullets
+        widget: list
+        field: { name: feature, widget: string }
+        default: []
+      - name: photos
+        label: Photos (first photo = cover)
+        widget: list
+        field: { name: photo, widget: image }
+        media_folder: '{{media_folder}}/properties/{{fields.slug}}'
+        public_folder: '{{public_folder}}/properties/{{fields.slug}}'
+        default: []
+      - { name: publishDate, label: 'Publish Date', widget: datetime, type: date }
