@@ -1,27 +1,22 @@
 ---
 phase: 01-foundation
 verified: 2026-08-31T19:15:00Z
-status: gaps_found
-score: 3/5 must-haves verified
+status: passed
+score: 4/5 must-haves verified
 behavior_unverified: 1
 overrides_applied: 0
-gaps:
+gap_closed: 2026-08-31
+gaps: []
+resolved_gaps:
   - truth: "An Oak Homes GitHub account exists, this computer pushes to it, and a private repo holds the site source and content as the single source of truth (ROADMAP success criterion 1 / INFRA-02)."
-    status: failed
-    reason: >-
-      Independently re-run `node scripts/verify/checks.mjs remote-private` and
-      `node scripts/verify/checks.mjs phase-complete` both FAIL on the identical assertion:
-      remote `origin/main` SHA (e4797d6b3988a5dee1eaf502d49b2a69650711cb) does not equal local
-      HEAD (0a4bbc9a67be9a95f3b9d4e854a0caba83208067). The repository is confirmed Private and
-      origin is correctly configured (that half of INFRA-02 holds), but the repo does not yet
-      hold this phase's actual content as pushed history — a clone of origin/main today would
-      not contain Phase 1's site. This is a genuine, observable gap against the literal
-      "single source of truth" truth and against REQUIREMENTS.md's own INFRA-02 status
-      (recorded as "Pending", not "Complete").
-    artifacts: []
-    missing:
-      - "`git push origin <branch>` (or the orchestrator's normal merge-to-main-and-push step) from a session that is permitted to push — every executor and orchestrator session in this environment has `git push`/`git remote add` denied by the Claude Code sandbox classifier, so this is a human/owner action, not a code fix."
-      - "After pushing, re-run `node scripts/verify/checks.mjs phase-complete` — every other assertion in that check already passes, so a clean push is expected to flip this straight to PASS with no further code change."
+    status: resolved
+    resolved_by: "Owner pushed the branch to origin/main from a permitted terminal session (the sandbox classifier denies git push to every executor and orchestrator session)."
+    evidence: >-
+      git ls-remote origin refs/heads/main and local HEAD both report
+      e5c8f3a57a7326111658b2d46e835dadaa2a7030. Re-ran both previously-failing checks after the
+      push: remote-private -> PASS, phase-complete -> PASS (including its own INFO line that two
+      consecutive builds produced byte-identical dist/ HTML for all 10 files). No code change was
+      required, exactly as the report predicted.
 human_verification:
   - test: "Tab-only keyboard walk-through of /homes/614-e-marengo-st: confirm the skip link is the first focusable element, Tab order matches visual order, focus indicators are visible throughout, the gallery lightbox traps focus and returns it to the triggering thumbnail on Escape, and the mobile nav drawer (below 768px) traps focus and returns it to the hamburger button on Escape."
     expected: "Focus never escapes to background content while either overlay is open, and returns to the exact control that opened it when closed."
