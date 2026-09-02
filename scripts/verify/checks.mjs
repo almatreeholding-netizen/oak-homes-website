@@ -3477,6 +3477,207 @@ const checks = {
 
     pass(id);
   },
+
+  /**
+   * 260901-t59: computed (not asserted) WCAG AA contrast gate for the
+   * full-bleed homepage hero banner. Verifies the committed hero JPEG's
+   * shape, that the colour tokens used are pulled from src/styles/global.css
+   * (never hardcoded here), that index.astro declares the expected hero
+   * markup/CSS, and -- the core of the check -- computes real AA contrast
+   * ratios by compositing the overlay gradient over the actual JPEG pixels,
+   * both an absolute pure-white worst case and an 8x8 block-average worst
+   * case. See 260901-t59-PLAN.md design decision D-B for why 0.62/0.72
+   * replaces the mockup's 0.55/0.66.
+   */
+  'hero-contrast': async (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const heroImagePath = join(toplevel, 'public', 'uploads', 'hero', 'home-hero.jpg');
+    const globalCssPath = join(toplevel, 'src', 'styles', 'global.css');
+    const indexAstroPath = join(toplevel, 'src', 'pages', 'index.astro');
+
+    // -- Step 1: asset -------------------------------------------------------
+
+    if (!existsSync(heroImagePath)) {
+      fail(id, `missing ${heroImagePath}`);
+    }
+    let metadata;
+    try {
+      metadata = await sharp(heroImagePath).metadata();
+    } catch (e) {
+      fail(id, `sharp could not read metadata for ${heroImagePath}: ${e}`);
+    }
+    if (metadata.format !== 'jpeg') {
+      fail(id, `${heroImagePath} has format '${metadata.format}', expected 'jpeg'`);
+    }
+    if (Math.max(metadata.width, metadata.height) > 2000) {
+      fail(id, `${heroImagePath} is ${metadata.width}x${metadata.height}, exceeds the 2000px pre-resize rule`);
+    }
+
+    // -- Step 2: token resolution ---------------------------------------------
+
+    let globalCss;
+    try {
+      globalCss = readUtf8File(globalCssPath);
+    } catch {
+      fail(id, `missing ${globalCssPath}`);
+    }
+    function resolveToken(name) {
+      const m = globalCss.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`));
+      if (!m) fail(id, `${globalCssPath} does not declare '--${name}' as a hex value`);
+      return m[1];
+    }
+    const creamHex = resolveToken('color-cream');
+    const inkHex = resolveToken('color-ink');
+    const accentHex = resolveToken('color-accent');
+
+    // -- Step 3: source declarations -------------------------------------------
+
+    let indexAstro;
+    try {
+      indexAstro = readUtf8File(indexAstroPath);
+    } catch {
+      fail(id, `missing ${indexAstroPath}`);
+    }
+    const requiredSubstrings = [
+      '/uploads/hero/home-hero.jpg',
+      'background-size: cover',
+      'background-position: center 42%',
+    ];
+    for (const s of requiredSubstrings) {
+      if (!indexAstro.includes(s)) {
+        fail(id, `${indexAstroPath} is missing the required substring '${s}'`);
+      }
+    }
+    if (!/\.hero\s*\{[^}]*color:\s*var\(--color-cream\)/.test(indexAstro)) {
+      fail(id, `${indexAstroPath}'s .hero rule does not declare color: var(--color-cream)`);
+    }
+    if (!/background-color:\s*var\(--color-accent\)/.test(indexAstro)) {
+      fail(id, `${indexAstroPath} is missing a rule with background-color: var(--color-accent) (expected on the pill)`);
+    }
+    if (!/color:\s*var\(--color-ink\)/.test(indexAstro)) {
+      fail(id, `${indexAstroPath} is missing a rule with color: var(--color-ink) (expected on the pill)`);
+    }
+    if (indexAstro.includes('64ch')) {
+      fail(id, `${indexAstroPath} still contains '64ch' -- the hero must no longer be width-constrained`);
+    }
+
+    // -- Step 4: colour-declaration hygiene ------------------------------------
+
+    const hexColorDeclRe = /(?<![\w-])(?:background-)?color:\s*#/;
+    if (hexColorDeclRe.test(indexAstro)) {
+      fail(id, `${indexAstroPath} declares a literal hex colour -- every colour must resolve through a var(--color-*) token (the two rgba() overlay stops are the only permitted literal colour values)`);
+    }
+
+    // -- Step 5: overlay parse --------------------------------------------------
+
+    const overlayMatches = [...indexAstro.matchAll(/rgba\(\s*26\s*,\s*24\s*,\s*20\s*,\s*([0-9.]+)\s*\)/g)];
+    if (overlayMatches.length !== 2) {
+      fail(id, `${indexAstroPath} contains ${overlayMatches.length} rgba(26, 24, 20, ...) overlay stop(s), expected exactly 2`);
+    }
+    const overlayAlphas = overlayMatches.map((m) => parseFloat(m[1])).sort((a, b) => a - b);
+    const lighterAlpha = overlayAlphas[0];
+    if (lighterAlpha < 0.6) {
+      fail(id, `${indexAstroPath}'s overlay alphas are [${overlayAlphas.join(', ')}] -- the lighter stop (${lighterAlpha}) is below the 0.60 AA floor`);
+    }
+
+    // -- Step 6: the actual contrast computation ---------------------------------
+
+    function hexToRgb(hex) {
+      const n = parseInt(hex.slice(1), 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+    function srgbToLin(s) {
+      const c = s / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    }
+    function relLuminance([r, g, b]) {
+      return 0.2126 * srgbToLin(r) + 0.7152 * srgbToLin(g) + 0.0722 * srgbToLin(b);
+    }
+    function contrastRatio(rgbA, rgbB) {
+      const La = relLuminance(rgbA);
+      const Lb = relLuminance(rgbB);
+      const lighter = Math.max(La, Lb);
+      const darker = Math.min(La, Lb);
+      return (lighter + 0.05) / (darker + 0.05);
+    }
+
+    const OVERLAY_RGB = [26, 24, 20];
+    function composite(imageRgb, alpha) {
+      return [0, 1, 2].map((i) => alpha * OVERLAY_RGB[i] + (1 - alpha) * imageRgb[i]);
+    }
+
+    const creamRgb = hexToRgb(creamHex);
+
+    // (a) absolute worst case: a pure-white pixel composited at the lighter stop.
+    const absoluteComposited = composite([255, 255, 255], lighterAlpha);
+    const absoluteRatio = contrastRatio(creamRgb, absoluteComposited);
+    if (absoluteRatio < 4.5) {
+      fail(id, `absolute worst-case contrast is ${absoluteRatio.toFixed(3)}:1 (alpha ${lighterAlpha}), below the 4.5:1 AA floor`);
+    }
+
+    // (b) block worst case: 8x8 block-average over the real JPEG pixels.
+    let raw;
+    try {
+      raw = await sharp(heroImagePath).raw().toBuffer({ resolveWithObject: true });
+    } catch (e) {
+      fail(id, `sharp could not decode raw pixels for ${heroImagePath}: ${e}`);
+    }
+    const { data, info } = raw;
+    const { width, height, channels } = info;
+    const BLOCK = 8;
+    let minBlockRatio = Infinity;
+    let worstBlock = null;
+    for (let by = 0; by < height; by += BLOCK) {
+      for (let bx = 0; bx < width; bx += BLOCK) {
+        const bw = Math.min(BLOCK, width - bx);
+        const bh = Math.min(BLOCK, height - by);
+        let sumR = 0;
+        let sumG = 0;
+        let sumB = 0;
+        let count = 0;
+        for (let y = by; y < by + bh; y++) {
+          for (let x = bx; x < bx + bw; x++) {
+            const idx = (y * width + x) * channels;
+            sumR += data[idx];
+            sumG += data[idx + 1];
+            sumB += data[idx + 2];
+            count += 1;
+          }
+        }
+        const avgRgb = [sumR / count, sumG / count, sumB / count];
+        const blockComposited = composite(avgRgb, lighterAlpha);
+        const blockRatio = contrastRatio(creamRgb, blockComposited);
+        if (blockRatio < minBlockRatio) {
+          minBlockRatio = blockRatio;
+          worstBlock = { x: bx, y: by, rgb: avgRgb };
+        }
+      }
+    }
+    if (minBlockRatio < 4.5) {
+      fail(
+        id,
+        `block worst-case contrast is ${minBlockRatio.toFixed(3)}:1 (alpha ${lighterAlpha}) at block x=${worstBlock.x} y=${worstBlock.y} rgb=(${worstBlock.rgb.map((v) => v.toFixed(1)).join(', ')}), below the 4.5:1 AA floor`,
+      );
+    }
+
+    // -- Step 7: pill contrast ---------------------------------------------------
+
+    const pillRatio = contrastRatio(hexToRgb(inkHex), hexToRgb(accentHex));
+    if (pillRatio < 4.5) {
+      fail(id, `pill contrast (ink on accent) is ${pillRatio.toFixed(3)}:1, below the 4.5:1 AA floor`);
+    }
+
+    process.stdout.write(
+      `hero-contrast: absolute worst-case ratio ${absoluteRatio.toFixed(3)}:1, block worst-case ratio ${minBlockRatio.toFixed(3)}:1, pill ratio ${pillRatio.toFixed(3)}:1\n`,
+    );
+
+    pass(id);
+  },
 };
 
 // ---------------------------------------------------------------------------
