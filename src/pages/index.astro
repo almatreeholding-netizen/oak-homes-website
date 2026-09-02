@@ -51,9 +51,12 @@ const featured =
 
 <Layout title="A Path to Homeownership">
   <section class="hero">
-    <h1>A Path to Homeownership</h1>
-    <p>{homepageIntro}</p>
-    <Button href="/homes">Browse Homes</Button>
+    <div class="hero-inner">
+      <p class="hero-tag">From Rent to Roots</p>
+      <h1>A Path to Homeownership</h1>
+      <p class="hero-lede">{homepageIntro}</p>
+      <Button href="/homes">Browse Homes</Button>
+    </div>
   </section>
 
   <section class="steps-section">
@@ -74,13 +77,63 @@ const featured =
 </Layout>
 
 <style>
+  /* Full-bleed: Layout.astro's <main> imposes no max-width or padding, so a
+     section here spans the viewport as soon as it drops its own width
+     constraint. Everything below the hero keeps its own 1200px container. */
   .hero {
-    max-width: 64ch;
+    background-color: var(--color-ink);
+    /* Overlay alphas (0.62 / 0.72) are set by a measured AA contrast floor
+       computed over the real photo's pixels, not copied from the mockup --
+       see scripts/verify/checks.mjs's hero-contrast check. */
+    background-image: linear-gradient(rgba(26, 24, 20, 0.62), rgba(26, 24, 20, 0.72)),
+      url('/uploads/hero/home-hero.jpg');
+    background-size: cover;
+    background-position: center 42%;
+    background-repeat: no-repeat;
+    color: var(--color-cream);
+    padding: 104px 0;
+  }
+
+  .hero-inner {
+    max-width: 1200px;
     margin: 0 auto;
-    padding: 64px 24px;
+    padding: 0 24px;
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     gap: 16px;
+  }
+
+  .hero-tag {
+    margin: 0;
+    padding: 8px 16px;
+    border-radius: 20px;
+    background-color: var(--color-accent);
+    color: var(--color-ink);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .hero h1 {
+    max-width: 780px;
+  }
+
+  .hero-lede {
+    margin: 0;
+    max-width: 620px;
+  }
+
+  @media (max-width: 600px) {
+    .hero {
+      padding: 64px 0;
+    }
+
+    .hero-inner {
+      padding: 0 16px;
+    }
   }
 
   .steps-section,
