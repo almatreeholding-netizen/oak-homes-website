@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-28)
 Phase: 02 (publishing) — EXECUTING
 Plan: 1 of 3
 Status: Executing Phase 02
-Last activity: 2026-09-01 — Phase 02 execution started
+Last activity: 2026-09-01 — Completed quick task 260901-t59: Add full-bleed hero banner image to homepage
 
 Progress: [████████░░] 75%
 
@@ -85,7 +85,14 @@ None yet.
 - **Phase 3, account-specific:** Zoho Web-to-Lead has no native URL-parameter prefill; custom JS is required and field naming varies by account. Needs hands-on testing.
 - **Phase 4, highest risk:** DNS cutover can silently break Google Workspace email. MX/SPF/DKIM staged and owner available to verify mail flow before the nameserver change.
 - **Cross-phase, legal:** Attorney review of land-contract wording is pending — gates heavy promotion, not launch.
-- Phase 2 Plan 1 Task 2 halted: precondition unmet (Task 1 commit e076b56 not yet reachable from origin/main) — needs merge/push, then human Netlify+GitHub dashboard work (no CLI available), before Task 3's live tracer proof can run.
+- Phase 2 Plan 1 Task 2 halted: precondition now MET (merged to origin/main as b98ab61 on 2026-09-01) — remaining blocker is human Netlify+GitHub dashboard work (no CLI available) before Task 3's live tracer proof can run. Live site confirmed auto-deploying at https://cool-semifreddo-760942.netlify.app/
+- Pre-existing, non-blocking: `a11y-sweep` in `scripts/verify/checks.mjs` expects exactly 10 built HTML files but finds 11 since phase 02-01 added `public/admin/index.html`. Logged in `.planning/WINDOWS.md` (deviation 1, open).
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260901-t59 | Add full-bleed hero banner image to homepage | 2026-09-01 | 3772b9f | [260901-t59-add-full-bleed-hero-banner-image-to-home](./quick/260901-t59-add-full-bleed-hero-banner-image-to-home/) |
 
 ## Deferred Items
 
