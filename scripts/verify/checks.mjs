@@ -4114,6 +4114,107 @@ const checks = {
 
     pass(id);
   },
+
+  /**
+   * quick-260902-txo Task 2: an unresolved legal fact cannot ship silently.
+   *
+   * src/data/legal.ts ships two bracketed placeholder tokens
+   * (LEGAL_ENTITY_NAME, BUSINESS_ADDRESS) that must be replaced with real
+   * values before the site goes live and before the 10DLC brand
+   * registration is submitted. This check scans the legal source files
+   * (and, once a build exists, the built HTML) for any doubled-square-
+   * bracket uppercase token and fails naming each one by file:line, so a
+   * placeholder can never reach ownwithoak.com unnoticed.
+   *
+   * Runs a two-fixture self-test of its own detector before scanning
+   * anything real, so a broken regex reports itself instead of silently
+   * passing everything.
+   */
+  'legal-placeholders': (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const placeholderPattern = /\[\[([A-Z0-9_]+)\]\]/g;
+
+    function findPlaceholders(text) {
+      const findings = [];
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i];
+        const re = new RegExp(placeholderPattern.source, 'g');
+        let m;
+        while ((m = re.exec(line)) !== null) {
+          findings.push({ token: m[1], line: i + 1 });
+        }
+      }
+      return findings;
+    }
+
+    // -- Self-test: prove the detector before trusting it -----------------
+    const positiveFixture = 'This sentence names a placeholder: [[SELF_TEST_TOKEN]] right here.';
+    const negativeFixture = 'This sentence references [a] and [B] but neither is a real placeholder.';
+
+    const positiveFindings = findPlaceholders(positiveFixture);
+    const negativeFindings = findPlaceholders(negativeFixture);
+
+    if (positiveFindings.length !== 1 || positiveFindings[0].token !== 'SELF_TEST_TOKEN') {
+      fail(id, 'detector self-test did not behave as specified: positive fixture did not yield exactly one SELF_TEST_TOKEN finding');
+    }
+    if (negativeFindings.length !== 0) {
+      fail(id, 'detector self-test did not behave as specified: negative fixture yielded a finding for single-bracketed text');
+    }
+    process.stdout.write('legal-placeholders: detector self-test OK (2 fixtures)\n');
+
+    // -- Build the scan list -----------------------------------------------
+    // Deliberately excludes this file (scripts/verify/checks.mjs) itself --
+    // its own self-test fixture contains a bracketed token by construction,
+    // and scanning itself would make this check permanently self-failing.
+    const requiredSourcePaths = [
+      join(toplevel, 'src', 'data', 'legal.ts'),
+      join(toplevel, 'src', 'pages', 'privacy.astro'),
+      join(toplevel, 'src', 'pages', 'sms-terms.astro'),
+    ];
+
+    for (const p of requiredSourcePaths) {
+      if (!existsSync(p)) {
+        fail(id, `required legal source file is missing: ${p}`);
+      }
+    }
+
+    const scanPaths = [...requiredSourcePaths];
+
+    const distDir = join(toplevel, 'dist');
+    if (existsSync(distDir)) {
+      for (const p of walkFiles(distDir)) {
+        if (p.endsWith('.html')) {
+          scanPaths.push(p);
+        }
+      }
+    }
+
+    const findings = [];
+    for (const p of scanPaths) {
+      const text = readUtf8File(p);
+      const relPath = p.startsWith(toplevel) ? p.slice(toplevel.length + 1).split(sep).join('/') : p;
+      for (const f of findPlaceholders(text)) {
+        findings.push(`${relPath}:${f.line}: ${f.token}`);
+      }
+    }
+    findings.sort();
+
+    if (findings.length > 0) {
+      fail(
+        id,
+        `unresolved: found ${findings.length} placeholder(s). Each must be replaced with a real value before the site goes live and before the 10DLC brand registration is submitted.\n` +
+          findings.join('\n'),
+      );
+    }
+
+    pass(id);
+  },
 };
 
 // ---------------------------------------------------------------------------
