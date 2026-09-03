@@ -22,6 +22,6 @@
 //     filter must keep /privacy and /sms-terms in the generated sitemap --
 //     10DLC/TCR vetting has to be able to crawl and index both pages.
 
-export const LEGAL_ENTITY_NAME = '[[LEGAL_ENTITY_NAME]]';
-export const BUSINESS_ADDRESS = '[[BUSINESS_ADDRESS]]';
+export const LEGAL_ENTITY_NAME = 'Oak Homes LLC';
+export const BUSINESS_ADDRESS = '2222 W Grand River Ave Ste A, Okemos, MI 48864';
 export const LEGAL_EFFECTIVE_DATE = 'September 2, 2026';
