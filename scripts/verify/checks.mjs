@@ -3479,6 +3479,442 @@ const checks = {
   },
 
   /**
+   * quick-260902-sws: regression gate for the production incident where
+   * commits e3d7077 / 45da85e wrote `sqft: null` (a Sveltia blank-field
+   * serialization) into real property frontmatter and the schema's bare
+   * `.optional()` rejected it, taking every subsequent Netlify build -- and
+   * the live deploy -- down. Asserts BOTH directions: every field this repo
+   * has classified as optional actually tolerates null/''/absent (Layer A +
+   * Layer B R1-R3), and no field has quietly been loosened out of being
+   * required in the process (Layer A + Layer B R4/R5) -- a "fix" that
+   * loosens a required field into optionality is a worse bug than the one
+   * being fixed.
+   *
+   * Layer A is a static, no-build audit of src/content.config.ts: it
+   * hardcodes the required/defaulted/container/optional partition and
+   * fails by name if the file's actual field set drifts from it in either
+   * direction -- an unclassified new field, or a classified field that
+   * silently changed camp.
+   *
+   * Layer B proves the partition holds at build time, against the real
+   * content files, via six mutate-build-assert-revert round trips
+   * (skeleton-e2e's established pattern). Every mutated file is restored
+   * immediately after its build and before any assertion, inside a
+   * try/finally, because fail() calls process.exit() directly and an
+   * assertion placed before the restore would leave the tree corrupt.
+   */
+  'cms-null-tolerance': (id) => {
+    const toplevelResult = runGit(['rev-parse', '--show-toplevel']);
+    if (!toplevelResult.ok) {
+      fail(id, `could not determine worktree root: ${toplevelResult.reason || toplevelResult.stderr}`);
+    }
+    const toplevel = resolve(toplevelResult.stdout);
+
+    const contentConfigPath = join(toplevel, 'src', 'content.config.ts');
+    const marengoPath = join(toplevel, 'src', 'content', 'properties', '614-e-marengo-st.md');
+    const brownPath = join(toplevel, 'src', 'content', 'properties', '2734-brown-st.md');
+    const blogPath = join(toplevel, 'src', 'content', 'blog', 'what-is-a-land-contract.md');
+    const settingsPath = join(toplevel, 'src', 'content', 'settings.json');
+    const distHomesIndexPath = join(toplevel, 'dist', 'homes', 'index.html');
+
+    // -- Frontmatter mutation helpers, sharing withPhotosField's style ------
+
+    /**
+     * Operate only inside the leading `---` ... `---` frontmatter block.
+     * Replace an existing `key: ...` line (plus any more-indented
+     * continuation lines immediately following it) with `key: literal`, or
+     * insert `key: literal` immediately before the closing `---` if the key
+     * is absent. The insert path is required: videoUrl, location, ogImage,
+     * and coverImage are absent from the real files today, so the null and
+     * empty-string rounds must add them to prove those fields too.
+     */
+    function upsertFrontmatterKey(content, key, literal) {
+      const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      if (!fmMatch) {
+        fail(id, `could not locate a frontmatter block ('---' ... '---') to mutate for key '${key}'`);
+      }
+      const fmBody = fmMatch[1];
+      const fmLines = fmBody.split(/\r?\n/);
+      const keyLineRe = new RegExp(`^${key}:`);
+      let keyLineIdx = -1;
+      for (let i = 0; i < fmLines.length; i++) {
+        if (keyLineRe.test(fmLines[i])) {
+          keyLineIdx = i;
+          break;
+        }
+      }
+      let newLines;
+      if (keyLineIdx === -1) {
+        newLines = fmLines.concat([`${key}: ${literal}`]);
+      } else {
+        let endIdx = keyLineIdx + 1;
+        while (endIdx < fmLines.length && /^\s+\S/.test(fmLines[endIdx])) endIdx += 1;
+        newLines = fmLines.slice(0, keyLineIdx).concat([`${key}: ${literal}`], fmLines.slice(endIdx));
+      }
+      const newFmBody = newLines.join('\n');
+      return content.slice(0, fmMatch.index) + `---\n${newFmBody}\n---` + content.slice(fmMatch.index + fmMatch[0].length);
+    }
+
+    /** Delete a frontmatter key's line and any more-indented continuation lines. No-op if absent. */
+    function removeFrontmatterKey(content, key) {
+      const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      if (!fmMatch) {
+        fail(id, `could not locate a frontmatter block ('---' ... '---') to mutate for key '${key}'`);
+      }
+      const fmBody = fmMatch[1];
+      const fmLines = fmBody.split(/\r?\n/);
+      const keyLineRe = new RegExp(`^${key}:`);
+      let keyLineIdx = -1;
+      for (let i = 0; i < fmLines.length; i++) {
+        if (keyLineRe.test(fmLines[i])) {
+          keyLineIdx = i;
+          break;
+        }
+      }
+      if (keyLineIdx === -1) return content; // no-op: key already absent
+      let endIdx = keyLineIdx + 1;
+      while (endIdx < fmLines.length && /^\s+\S/.test(fmLines[endIdx])) endIdx += 1;
+      const newLines = fmLines.slice(0, keyLineIdx).concat(fmLines.slice(endIdx));
+      const newFmBody = newLines.join('\n');
+      return content.slice(0, fmMatch.index) + `---\n${newFmBody}\n---` + content.slice(fmMatch.index + fmMatch[0].length);
+    }
+
+    // -- Layer A: static schema-partition audit ------------------------------
+
+    let contentConfig;
+    try {
+      contentConfig = readUtf8File(contentConfigPath);
+    } catch {
+      fail(id, `missing file: ${contentConfigPath}`);
+    }
+
+    const helperMatch = contentConfig.match(/function cmsOptional[\s\S]*?\n\}/);
+    if (!helperMatch) {
+      fail(id, `${contentConfigPath} does not declare a 'function cmsOptional' helper`);
+    }
+    const helperBody = helperMatch[0];
+    if (!helperBody.includes('z.preprocess')) {
+      fail(id, `cmsOptional's body does not call z.preprocess`);
+    }
+    if (!helperBody.includes('=== null')) {
+      fail(id, `cmsOptional's body does not test '=== null'`);
+    }
+    if (!helperBody.includes(`=== ''`) && !helperBody.includes('=== ""')) {
+      fail(id, `cmsOptional's body does not test an empty-string comparison`);
+    }
+    const cmsOptionalDeclCount = (contentConfig.match(/function cmsOptional/g) || []).length;
+    if (cmsOptionalDeclCount !== 1) {
+      fail(id, `expected exactly 1 'function cmsOptional' declaration, found ${cmsOptionalDeclCount}`);
+    }
+
+    /**
+     * Extract `name -> declaration text` pairs from a schema block, using
+     * cms-tracer-config's own anchors and extraction regex so this stays in
+     * lockstep with that check's formatting assumptions. `socialIndent`
+     * additionally extracts 6-space-indented lines (settings.social) as
+     * `social.<name>`.
+     */
+    function extractSchemaFields(collectionMarker, { includeSocial = false } = {}) {
+      const collectionStart = contentConfig.indexOf(collectionMarker);
+      if (collectionStart === -1) {
+        fail(id, `${contentConfigPath} does not contain '${collectionMarker}'`);
+      }
+      const schemaStart = contentConfig.indexOf('schema: z.object({', collectionStart);
+      if (schemaStart === -1) {
+        fail(id, `${contentConfigPath}: no 'schema: z.object({' after '${collectionMarker}'`);
+      }
+      const schemaEnd = contentConfig.indexOf('\n  }),', schemaStart);
+      if (schemaEnd === -1) {
+        fail(id, `${contentConfigPath}: could not find the closing '  }),' for the block starting at '${collectionMarker}'`);
+      }
+      const schemaBlock = contentConfig.slice(schemaStart, schemaEnd);
+      const fields = {};
+      const topRe = /^ {4}([a-zA-Z0-9_]+):\s*(.+)$/gm;
+      let m;
+      while ((m = topRe.exec(schemaBlock)) !== null) {
+        fields[m[1]] = m[2];
+      }
+      if (includeSocial) {
+        const socialRe = /^ {6}([a-zA-Z0-9_]+):\s*(.+)$/gm;
+        while ((m = socialRe.exec(schemaBlock)) !== null) {
+          fields[`social.${m[1]}`] = m[2];
+        }
+      }
+      if (Object.keys(fields).length === 0) {
+        fail(id, `${contentConfigPath}: extracted zero field names from the block starting at '${collectionMarker}' -- extraction regex did not match this file's formatting`);
+      }
+      return fields;
+    }
+
+    const propertiesFields = extractSchemaFields('const properties = defineCollection({');
+    const blogFields = extractSchemaFields('const blog = defineCollection({');
+    const settingsFields = extractSchemaFields('const settings = defineCollection({', { includeSocial: true });
+
+    const PARTITION = {
+      REQUIRED: {
+        properties: ['title', 'address', 'slug', 'status', 'downPayment', 'monthlyPayment', 'description', 'publishDate'],
+        blog: ['title', 'slug', 'date'],
+        settings: ['phone', 'phoneHref', 'email', 'homepageIntro'],
+      },
+      DEFAULTED: {
+        properties: ['featured', 'features', 'photos'],
+        blog: ['ownerReviewed'],
+        settings: [],
+      },
+      CONTAINER: {
+        properties: [],
+        blog: [],
+        settings: ['social'],
+      },
+      OPTIONAL: {
+        properties: ['beds', 'baths', 'sqft', 'videoUrl', 'location', 'ogImage'],
+        blog: ['coverImage'],
+        settings: ['social.facebook'],
+      },
+    };
+
+    function auditCollection(collectionName, extractedFields) {
+      const classified = new Set([
+        ...PARTITION.REQUIRED[collectionName],
+        ...PARTITION.DEFAULTED[collectionName],
+        ...PARTITION.CONTAINER[collectionName],
+        ...PARTITION.OPTIONAL[collectionName],
+      ]);
+      const extractedNames = new Set(Object.keys(extractedFields));
+
+      for (const name of extractedNames) {
+        if (!classified.has(name)) {
+          fail(
+            id,
+            `new field '${name}' in the ${collectionName} schema is not classified -- add it to cms-null-tolerance's required/defaulted/container/optional lists before shipping`,
+          );
+        }
+      }
+      for (const name of classified) {
+        if (!extractedNames.has(name)) {
+          fail(id, `classified field '${name}' (${collectionName}) is stale -- it no longer appears in the schema; update cms-null-tolerance's partition`);
+        }
+      }
+
+      for (const name of PARTITION.OPTIONAL[collectionName]) {
+        const decl = extractedFields[name];
+        if (!decl.startsWith('cmsOptional(')) {
+          fail(id, `optional field '${name}' (${collectionName}) does not start with 'cmsOptional(': "${decl}"`);
+        }
+      }
+      for (const name of PARTITION.REQUIRED[collectionName]) {
+        const decl = extractedFields[name];
+        for (const forbidden of ['cmsOptional', '.optional(', '.nullish(', '.nullable(', '.default(']) {
+          // <!-- planner-discipline-allow: .optional( --> <!-- planner-discipline-allow: .nullish( -->
+          if (decl.includes(forbidden)) {
+            fail(id, `required field '${name}' (${collectionName}) contains '${forbidden}' -- required fields must never gain a tolerance modifier: "${decl}"`);
+          }
+        }
+      }
+      for (const name of PARTITION.DEFAULTED[collectionName]) {
+        const decl = extractedFields[name];
+        if (!decl.includes('.default(')) {
+          fail(id, `defaulted field '${name}' (${collectionName}) does not contain '.default(': "${decl}"`);
+        }
+        if (decl.includes('cmsOptional')) {
+          fail(id, `defaulted field '${name}' (${collectionName}) is wrapped in cmsOptional -- defaulted and cmsOptional are mutually exclusive strategies: "${decl}"`);
+        }
+      }
+    }
+
+    auditCollection('properties', propertiesFields);
+    auditCollection('blog', blogFields);
+    auditCollection('settings', settingsFields);
+
+    // -- Layer B: behavioural round trips against the real content ----------
+
+    const originalMarengo = readUtf8File(marengoPath);
+    const originalBrown = readUtf8File(brownPath);
+    const originalBlog = readUtf8File(blogPath);
+    const originalSettings = readUtf8File(settingsPath);
+
+    function restoreAll() {
+      writeFileSync(marengoPath, originalMarengo, 'utf8');
+      writeFileSync(brownPath, originalBrown, 'utf8');
+      writeFileSync(blogPath, originalBlog, 'utf8');
+      writeFileSync(settingsPath, originalSettings, 'utf8');
+    }
+
+    const OPTIONAL_PROPERTY_FIELDS = ['beds', 'baths', 'sqft', 'videoUrl', 'location', 'ogImage'];
+    const REQUIRED_PROPERTY_FIELDS = ['title', 'address', 'slug', 'status', 'downPayment', 'monthlyPayment', 'description', 'publishDate'];
+
+    function mutateSettingsFacebook(value) {
+      const parsed = JSON.parse(originalSettings);
+      if (value === undefined) {
+        delete parsed.main.social.facebook;
+      } else {
+        parsed.main.social.facebook = value;
+      }
+      writeFileSync(settingsPath, JSON.stringify(parsed, null, 2) + '\n', 'utf8');
+    }
+
+    try {
+      // -- R1: optional = null -------------------------------------------
+      {
+        let marengo = originalMarengo;
+        let brown = originalBrown;
+        let blog = originalBlog;
+        for (const f of OPTIONAL_PROPERTY_FIELDS) {
+          marengo = upsertFrontmatterKey(marengo, f, 'null');
+          brown = upsertFrontmatterKey(brown, f, 'null');
+        }
+        blog = upsertFrontmatterKey(blog, 'coverImage', 'null');
+        writeFileSync(marengoPath, marengo, 'utf8');
+        writeFileSync(brownPath, brown, 'utf8');
+        writeFileSync(blogPath, blog, 'utf8');
+        mutateSettingsFacebook(null);
+
+        clearAstroCache(toplevel);
+        const build = runBuild(toplevel);
+        restoreAll();
+
+        if (build.timedOut) fail(id, `R1 (optional=null) build timed out`);
+        if (build.status !== 0) {
+          fail(id, `R1 (optional=null) build exited ${build.status}, expected 0:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+        }
+        const homesIndex = readUtf8File(distHomesIndexPath);
+        const cfdCount = countOccurrences(homesIndex, 'Call for details');
+        if (cfdCount < 6) {
+          fail(id, `R1 (optional=null): 'Call for details' occurs ${cfdCount} times in ${distHomesIndexPath}, expected >= 6 -- nulls did not normalize to undefined`);
+        }
+      }
+
+      // -- R2: optional = empty string -------------------------------------
+      {
+        let marengo = originalMarengo;
+        let brown = originalBrown;
+        let blog = originalBlog;
+        for (const f of OPTIONAL_PROPERTY_FIELDS) {
+          marengo = upsertFrontmatterKey(marengo, f, `""`);
+          brown = upsertFrontmatterKey(brown, f, `""`);
+        }
+        blog = upsertFrontmatterKey(blog, 'coverImage', `""`);
+        writeFileSync(marengoPath, marengo, 'utf8');
+        writeFileSync(brownPath, brown, 'utf8');
+        writeFileSync(blogPath, blog, 'utf8');
+        mutateSettingsFacebook('');
+
+        clearAstroCache(toplevel);
+        const build = runBuild(toplevel);
+        restoreAll();
+
+        if (build.timedOut) fail(id, `R2 (optional='') build timed out`);
+        if (build.status !== 0) {
+          fail(id, `R2 (optional='') build exited ${build.status}, expected 0:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+        }
+        const homesIndex = readUtf8File(distHomesIndexPath);
+        const cfdCount = countOccurrences(homesIndex, 'Call for details');
+        if (cfdCount < 6) {
+          fail(id, `R2 (optional=''): 'Call for details' occurs ${cfdCount} times in ${distHomesIndexPath}, expected >= 6 -- empty strings did not normalize to undefined`);
+        }
+      }
+
+      // -- R3: optional absent ----------------------------------------------
+      {
+        let marengo = originalMarengo;
+        let brown = originalBrown;
+        let blog = originalBlog;
+        for (const f of OPTIONAL_PROPERTY_FIELDS) {
+          marengo = removeFrontmatterKey(marengo, f);
+          brown = removeFrontmatterKey(brown, f);
+        }
+        blog = removeFrontmatterKey(blog, 'coverImage');
+        writeFileSync(marengoPath, marengo, 'utf8');
+        writeFileSync(brownPath, brown, 'utf8');
+        writeFileSync(blogPath, blog, 'utf8');
+        mutateSettingsFacebook(undefined);
+
+        clearAstroCache(toplevel);
+        const build = runBuild(toplevel);
+        restoreAll();
+
+        if (build.timedOut) fail(id, `R3 (optional=absent) build timed out`);
+        if (build.status !== 0) {
+          fail(id, `R3 (optional=absent) build exited ${build.status}, expected 0:\n${build.stdout.slice(-2000)}\n${build.stderr.slice(-2000)}`);
+        }
+        const homesIndex = readUtf8File(distHomesIndexPath);
+        const cfdCount = countOccurrences(homesIndex, 'Call for details');
+        if (cfdCount < 6) {
+          fail(id, `R3 (optional=absent): 'Call for details' occurs ${cfdCount} times in ${distHomesIndexPath}, expected >= 6 -- an absent key did not normalize to undefined`);
+        }
+      }
+
+      // -- R4: properties required = null (Marengo only) --------------------
+      {
+        let marengo = originalMarengo;
+        for (const f of REQUIRED_PROPERTY_FIELDS) {
+          marengo = upsertFrontmatterKey(marengo, f, 'null');
+        }
+        writeFileSync(marengoPath, marengo, 'utf8');
+
+        clearAstroCache(toplevel);
+        const build = runBuild(toplevel);
+        restoreAll();
+
+        if (build.timedOut) fail(id, `R4 (required=null) build timed out`);
+        if (build.status === 0) {
+          fail(id, `R4 (required=null) build exited 0 -- expected non-zero, required fields must reject null`);
+        }
+        const out = (build.stdout + build.stderr).toLowerCase();
+        const missing = REQUIRED_PROPERTY_FIELDS.filter((f) => !out.includes(f.toLowerCase()));
+        if (missing.length > 0) {
+          fail(id, `R4 (required=null): build output does not name required field(s) [${missing.join(', ')}]`);
+        }
+      }
+
+      // -- R5: properties required absent (Marengo only) ---------------------
+      {
+        let marengo = originalMarengo;
+        for (const f of REQUIRED_PROPERTY_FIELDS) {
+          marengo = removeFrontmatterKey(marengo, f);
+        }
+        writeFileSync(marengoPath, marengo, 'utf8');
+
+        clearAstroCache(toplevel);
+        const build = runBuild(toplevel);
+        restoreAll();
+
+        if (build.timedOut) fail(id, `R5 (required=absent) build timed out`);
+        if (build.status === 0) {
+          fail(id, `R5 (required=absent) build exited 0 -- expected non-zero, required fields must reject absence`);
+        }
+        const out = (build.stdout + build.stderr).toLowerCase();
+        const missing = REQUIRED_PROPERTY_FIELDS.filter((f) => !out.includes(f.toLowerCase()));
+        if (missing.length > 0) {
+          fail(id, `R5 (required=absent): build output does not name required field(s) [${missing.join(', ')}]`);
+        }
+      }
+
+      // -- R6: final rebuild, everything restored -----------------------------
+
+      clearAstroCache(toplevel);
+      const finalBuild = runBuild(toplevel);
+      if (finalBuild.timedOut) fail(id, `R6 (final rebuild) timed out`);
+      if (finalBuild.status !== 0) {
+        fail(id, `R6 (final rebuild) exited ${finalBuild.status}, expected 0 -- the tree must be left in a known-good built state:\n${finalBuild.stdout.slice(-2000)}\n${finalBuild.stderr.slice(-2000)}`);
+      }
+    } finally {
+      restoreAll();
+    }
+
+    // Blog and settings required fields (blog title/slug/date, settings
+    // phone/phoneHref/email/homepageIntro) are covered by Layer A only, not
+    // by their own R4/R5-style build round trips. Deliberate, budgeted scope
+    // call for a hotfix: Layer A already fails loudly if any of them gains a
+    // tolerance modifier, skeleton-e2e step 11 already proves the settings
+    // phone field rejects a blank at build time, and adding four more builds
+    // would roughly double this check's runtime for a strictly weaker
+    // marginal guarantee than R4/R5 already provide for properties.
+
+    pass(id);
+  },
+
+  /**
    * 260901-t59: computed (not asserted) WCAG AA contrast gate for the
    * full-bleed homepage hero banner. Verifies the committed hero JPEG's
    * shape, that the colour tokens used are pulled from src/styles/global.css
