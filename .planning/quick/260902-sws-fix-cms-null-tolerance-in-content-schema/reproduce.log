@@ -1,0 +1,21 @@
+
+> oak-homes-website@0.0.1 build
+> astro build
+
+[2m21:08:42[22m [34m[content][39m Syncing content
+[31m[InvalidContentEntryDataError][39m [1mproperties → 614-e-marengo-st[22m data does not match collection schema.
+
+  [1mbeds**: **beds[22m: Expected type `"number"`, received `"object"`
+  [1mbaths**: **baths[22m: Expected type `"number"`, received `"object"`
+  [1msqft**: **sqft[22m: Expected type `"number"`, received `"object"`
+
+  [1mHint:[22m
+[33m    See [4mhttps://docs.astro.build/en/guides/content-collections/[24m for more information on content schemas.[39m
+  [1mError reference:[22m
+    [36m[4mhttps://docs.astro.build/en/reference/errors/invalid-content-entry-data-error/[24m[39m
+  [1mLocation:[22m
+    [4mC:\tmp\oak-null-260902\src\content\properties\614-e-marengo-st.md:0:0[24m
+  [1mStack trace:[22m
+[2m    at getEntryData (C:\tmp\oak-null-260902\node_modules\astro\dist\content\utils.js:121:9)
+    at async eval (C:\tmp\oak-null-260902\node_modules\astro\dist\content\loaders\glob.js:225:13)[22m
+Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 94
