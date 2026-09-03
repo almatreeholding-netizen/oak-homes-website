@@ -6,7 +6,7 @@ current_phase: 02
 current_phase_name: publishing
 status: executing
 stopped_at: "Completed quick task 260902-txo: added Privacy Policy and SMS Terms pages (commits 55f1930, 984774b); legal-placeholders check is RED by design pending owner-supplied legal entity name and mailing address"
-last_updated: "2026-09-03T01:57:01.185Z"
+last_updated: "2026-09-03T02:31:29.566Z"
 last_activity: 2026-09-02
 last_activity_desc: "Completed quick task 260902-txo: added Privacy Policy and SMS Terms pages (10DLC SMS-vetting critical path); legal-placeholders check RED by design pending owner-supplied entity name/address"
 progress:
@@ -99,6 +99,7 @@ Recent decisions affecting current work:
 | 260901-t59 | Add full-bleed hero banner image to homepage | 2026-09-01 | 3772b9f | [260901-t59-add-full-bleed-hero-banner-image-to-home](./quick/260901-t59-add-full-bleed-hero-banner-image-to-home/) |
 | 260902-sws | Fix CMS null tolerance in content schema (live production hotfix) | 2026-09-02 | 87f2264 | [260902-sws-fix-cms-null-tolerance-in-content-schema](./quick/260902-sws-fix-cms-null-tolerance-in-content-schema/) |
 | 260902-txo | Add Privacy Policy and SMS Terms pages (10DLC SMS-vetting critical path) | 2026-09-02 | 984774b | [260902-txo-add-privacy-policy-and-sms-terms-pages-f](./quick/260902-txo-add-privacy-policy-and-sms-terms-pages-f/) |
+| 4 | Resolve legal placeholders (Oak Homes LLC + Okemos address), remove non-existent form claims | 2026-09-03 | f2feeb4 | — |
 
 ## Deferred Items
 
