@@ -23,6 +23,41 @@ const slugSchema = z
   .regex(slugPattern, 'slug must be lowercase ASCII words separated by single hyphens, with no leading or trailing hyphen');
 
 /**
+ * A form-based CMS cannot express "this key is absent" the way hand-written
+ * frontmatter can. Sveltia (and form-based CMSes generally) writes a blank
+ * optional number field as `null` and a blank optional text field as `""` --
+ * it never simply omits the key. `z.number().optional()` only tolerates a
+ * missing key; handed `null` it fails with "expected number, received null"
+ * (Astro's content-layer wrapper reports this as "received object", since
+ * `typeof null === 'object'`). That gap took the production build down on
+ * commits e3d7077 / 45da85e, when the assistant left `sqft` blank on both
+ * homes and Netlify kept serving stale HTML because every subsequent deploy
+ * failed.
+ *
+ * `z.preprocess` runs BEFORE the inner validator, so `null` and `''` are
+ * normalized to `undefined` first and the inner schema never sees them --
+ * this is NOT interchangeable with `.nullish()`, which still hands `''` to
+ * `.url()` and fails it, and still hands `null` straight through to a nested
+ * object schema. `undefined` is the deliberate normalization target, not
+ * `null` or `''`, because every consuming template already guards on
+ * `undefined` (`n === undefined ? 'Call for details' : ...`) or on plain
+ * truthiness -- normalizing to anything else would require touching those
+ * templates too.
+ *
+ * This must NEVER be wrapped around a required field: that would silently
+ * let a home publish with no price, no status, or no address. The
+ * `cms-null-tolerance` check in scripts/verify/checks.mjs enforces both
+ * directions -- every optional field stays wrapped, every required field
+ * stays bare -- so this boundary cannot drift unnoticed.
+ */
+function cmsOptional<T extends z.ZodType>(inner: T) {
+  return z.preprocess(
+    (value) => (value === null || value === '' ? undefined : value),
+    inner.optional(),
+  );
+}
+
+/**
  * Derive the entry id from the filename stem only, ignoring any `slug` in
  * frontmatter. This is deliberate: Astro's glob-loader default (see
  * astro/dist/content/loaders/glob.js `generateIdDefault`) uses `data.slug`
@@ -60,9 +95,9 @@ const properties = defineCollection({
     featured: z.boolean().default(false), // D-06: homepage featured-with-fallback
     downPayment: z.number(),
     monthlyPayment: z.number(),
-    beds: z.number().optional(), // D-10: absent -> "Call for details"
-    baths: z.number().optional(),
-    sqft: z.number().optional(),
+    beds: cmsOptional(z.number()), // D-10: absent -> "Call for details"
+    baths: cmsOptional(z.number()),
+    sqft: cmsOptional(z.number()),
     description: z.string(),
     features: z.array(z.string()).default([]),
     // Default-empty, NOT z.array(z.string()).min(1) — this supersedes
@@ -72,9 +107,9 @@ const properties = defineCollection({
     // plan 01-03 Task 3 proves the placeholder by temporarily emptying this
     // array and requiring a passing build.
     photos: z.array(z.string()).default([]),
-    videoUrl: z.string().url().optional(), // Phase 3 field, unused this phase
-    location: z.object({ lat: z.number(), lng: z.number() }).optional(), // D-16: created, empty
-    ogImage: z.string().optional(), // Phase 3 OpenGraph field, included now
+    videoUrl: cmsOptional(z.string().url()), // Phase 3 field, unused this phase
+    location: cmsOptional(z.object({ lat: z.number(), lng: z.number() })), // D-16: created, empty
+    ogImage: cmsOptional(z.string()), // Phase 3 OpenGraph field, included now
     publishDate: z.date(),
   }),
 });
@@ -85,7 +120,7 @@ const blog = defineCollection({
     title: z.string(),
     slug: slugSchema,
     date: z.date(),
-    coverImage: z.string().optional(),
+    coverImage: cmsOptional(z.string()),
     ownerReviewed: z.boolean().default(false),
   }),
 });
@@ -102,7 +137,7 @@ const settings = defineCollection({
     phoneHref: z.string().min(1),
     email: z.string().min(1),
     social: z.object({
-      facebook: z.string().url().optional(), // D-17: Facebook only, no Instagram
+      facebook: cmsOptional(z.string().url()), // D-17: Facebook only, no Instagram
     }),
     homepageIntro: z.string().min(1),
   }),
